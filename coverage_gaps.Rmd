@@ -1,5 +1,5 @@
 ---
-title: "Report on coverage and gaps in the humanitarian response in Venezuela in 2019"
+title: "Coverage and gaps in the humanitarian response in Venezuela in 2019"
 author: "Sean Ng"
 date: "25/11/2021"
 output: 
@@ -17,12 +17,12 @@ output:
 
 <style>
     body .main-container {
-        max-width: 1600px;
+        max-width: 1280px;
     }
 </style>
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.width=12, message = FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE, fig.width=8.5, message = FALSE, warning=FALSE)
 library(tidyverse)
 library(readxl)
 library(lubridate)
@@ -34,15 +34,15 @@ library(pander)
 library(DT)
 library(knitr)
 library(kableExtra)
+
 library(ggplot2)
-library(ggmap)
-library(sf)
 library(plotly)
 library(scales)
 library(ggforce)
 library(ggpubr)
 library(forcats)
 library(patchwork)
+
 library(rattle)
 library(rpart)
 library(rpart.plot)
@@ -52,6 +52,12 @@ library(corrplot)
 library(factoextra)
 library(shiny)
 
+library(ggmap)
+library(ggrepel)
+library(sf)
+library(rmapshaper)
+library(viridis)
+
 # disabling scientific notation
 options(scipen = 100)
 
@@ -60,28 +66,33 @@ panderOptions('table.split.table', Inf)
 
 # pander thousands separator
 panderOptions("big.mark", ",")
-```
 
-> This automated reported is intended to serve as a template for a coverage and gaps analyses. It provides examples of the analysis necessary to identify populations in need who are not currently covered by humanitarian action and provide recommendations on how partners may best reach them. Coverage and gaps analyses should be used in tandem with concerted monitoring and evaluation (M&E) -- opportunities where Information Management and M&E may reinforce each other are discussed below, in relevant sections. 
-
-> Coverage and gaps analyses are key documents, but are also rarely taken into account during operational planning or referenced during revisions of major strategic documents, such as Humanitarian Response Plans (HRPs). Neither are they mentioned in OCHA's HRP guidance. 
-
-> Given that needs always grossly outweigh available funding, it still remains an industry-wide challenege to respond adequately to gaps in coverage and reallocate resources accordingly. Too often, once committed to a course of action, clusters and their humanitarian partners do not reexamine or reevaluate their interventions. None of the analyses in this document require great skill -- they have all been performed by a single analyst; yet, this type of report remains exceedingly rare. 
-
-
-#### 0. A note on the data
-
-Most of the data originates from the Education, Health, Nutrition, Protection and WASH Clusters, from the start of formal 5W data collection to the end of the year 2019 -- and any conclusions or analysis are illustrative of only this point in time. Partner data has been anonymised. Other data originate from the census dataset of Venezuela that was maintained by UNICEF. Unlike the document of 5W reporting and cleaning, we will not be exploring the cleaning process. But the source code of each chunk will be displayed when the `Code` button is clicked. 
-
-```{r reading-and-cleaning-and-intermedite-ouputs}
+`%out%` <- Negate(`%in%`)
 
 # function to remove accents 
 rm_accent <- function(colns){
   colns <- stri_trans_general(colns, "Latin-ASCII")
 }
 
+```
+
+## 1. Introduction
+
+This automated reported is intended to serve as a template for a coverage and gaps analyses. It provides examples of the analysis necessary to identify populations in need who are not currently covered by humanitarian action and provide recommendations on how partners may best reach them. Coverage and gaps analyses should be used in tandem with concerted monitoring and evaluation (M&E) -- opportunities where Information Management and M&E may reinforce each other are discussed below, in relevant sections. 
+
+Coverage and gaps analyses are key documents, but are also rarely taken into account during operational planning or referenced during revisions of major strategic documents, such as Humanitarian Response Plans (HRPs). Neither are they mentioned in OCHA's HRP guidance. 
+
+Given that needs always grossly outweigh available funding, it still remains an industry-wide challenege to respond adequately to gaps in coverage and reallocate resources accordingly. Too often, once committed to a course of action, clusters and their humanitarian partners do not reexamine or reevaluate their interventions. None of the analyses in this document require great skill -- they have all been performed by a single analyst; yet, this type of report remains exceedingly rare. 
+
+
+#### A note on the data
+
+* Most of the data originates from the Education, Health, Nutrition, Protection and WASH Clusters, from the start of formal 5W data collection to the end of the year 2019 -- and any conclusions or analysis are illustrative of only this point in time. Partner data has been anonymised. Other data originate from the census dataset of Venezuela that was maintained by UNICEF. Unlike the document of 5W reporting and cleaning, we will not be exploring the cleaning process. But the source code of each chunk will be displayed when the `Code` button is clicked. 
+
+```{r reading-and-cleaning-and-intermedite-ouputs}
+
 # reading and cleaning -- you really should break it into parts
-ven1 <- read_csv("consolidation 191209 1635.csv") %>% 
+ven1 <- read_csv("consolidation 191209 1636.csv") %>% 
   clean_names() %>% 
   # removing unused columns
   select(-c(codigodeestablecimientoocentro, loc_id, hrp_sitre_p_indicator, 
@@ -143,7 +154,7 @@ ven1 <- read_csv("consolidation 191209 1635.csv") %>%
   select(-c(23:92))
 
 # I'm kinda doubting the use of u_ben, ya I think take it out? since you're only using it once
-# Am I just making these out of habit? I could cut them and make them inside the 
+# Am I just making these out of habit? I could make them inside the 
 # code chunk for parr, but maybe I can find some justification for their existence, 
 # maybe the disaggregations? 
 
@@ -161,7 +172,9 @@ act_ben <- ven1 %>%
   filter(beneficiarios != 0) %>% 
   group_by(ubicacion, desagregacion, actividad) %>% 
   slice(which.max(beneficiarios)) %>% 
-  ungroup()
+  ungroup() %>% 
+  mutate(sector = ifelse(str_detect(sector, "Proteccion_GBV|Proteccion_General|Proteccion_NNA"), 
+                         "Proteccion", sector))
 
 # rbind(sum(u_ben$beneficiarios), 
 #       sum(act_ben$beneficiarios), 
@@ -181,33 +194,45 @@ parr <- u_ben %>%
   ungroup() %>% 
   # count of organisations per pcode3
   left_join(act_ben %>% 
-             filter(categoria != "Vacunacion") %>%
+             # filter(categoria != "Vacunacion") %>%
              group_by(pcode3) %>% 
              summarise(org_count = n_distinct(org_implementadora))) %>% 
   # getting beneficiary frequencies, sector count and maximum multi-sector beneficiaries
-  left_join(act_ben %>% 
-      filter(categoriadeactividad != "Vacunacion") %>% 
-      group_by(ubicacion, desagregacion, sector) %>% 
-      slice(which.max(beneficiarios)) %>% 
-      ungroup() %>% 
-      group_by(ubicacion, sector, pcode3) %>% 
-      pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
-      replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
-                        Seguridad_Alimentaria = 0, Proteccion_NNA = 0,
-                        Proteccion_General = 0, Proteccion_GBV = 0)) %>%
-      group_by(pcode3) %>% 
-      summarise(nutricion_ben = sum(Nutricion),
-                  proteccion_ben = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
-                  wash_ben = sum(WASH),
-                  salud_ben = sum(Salud),
-                  educacion_ben = sum(Educacion),
-                  seguridad_alimentaria_ben = sum(Seguridad_Alimentaria)) %>% 
-        mutate(sector_count = rowSums(select(., -pcode3)!=0), 
-                 ben_freq = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
-                            educacion_ben + seguridad_alimentaria_ben,
-                 ben_max = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
-                                educacion_ben, seguridad_alimentaria_ben),
-                 ms_max_ben = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max))) %>% 
+  left_join(act_ben %>%
+  # vaccination filtered out  
+   filter(categoriadeactividad != "Vacunacion") %>% 
+             group_by(ubicacion, desagregacion, sector) %>% 
+                 slice(which.max(beneficiarios)) %>% 
+                 ungroup() %>%
+                 group_by(ubicacion, sector, pcode3) %>% 
+                 pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
+                 replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
+                                 Seguridad_Alimentaria = 0, Proteccion = 0)) %>%
+             group_by(pcode3, desagregacion) %>% 
+             summarise(nutricion_ben   = sum(Nutricion),
+                       proteccion_ben  = sum(Proteccion),
+                       wash_ben        = sum(WASH),
+                       salud_ben       = sum(Salud),
+                       educacion_ben   = sum(Educacion),
+                       sa_ben          = sum(Seguridad_Alimentaria), .groups = "drop") %>% 
+             mutate(ben_freq   = nutricion_ben + proteccion_ben + wash_ben + salud_ben +
+                                 educacion_ben + sa_ben,
+                    ben_max    = pmax(nutricion_ben, proteccion_ben, wash_ben, 
+                                      salud_ben, educacion_ben, sa_ben),
+                    ms_ben_max = ifelse(ben_max >= ben_freq - ben_max, 
+                                        ben_freq - ben_max, 
+                                        ben_max)) %>% 
+             group_by(pcode3) %>% 
+             summarise(nutricion_ben  = sum(nutricion_ben),
+                       proteccion_ben = sum(proteccion_ben),
+                       wash_ben       = sum(wash_ben),
+                       salud_ben      = sum(salud_ben),
+                       educacion_ben  = sum(educacion_ben),
+                       sa_ben         = sum(sa_ben),
+                       ben_freq   = sum(ben_freq),
+                       ben_max    = sum(ben_max),
+                       ms_ben_max = sum(ms_ben_max)) %>% 
+             mutate(sector_count = rowSums(select(., ends_with("_ben")) != 0))) %>%  
   filter(str_detect(pcode3, "^VE")) %>% 
   # right_join to the census data
   right_join(read_excel("census data 20191122.xlsx", sheet = "data") %>% 
@@ -251,7 +276,7 @@ parr <- u_ben %>%
                matricula_total = matricula_2017_educacion_inicial + 
                                  matricula_2017_educacion_primaria + 
                                  matricula_2017_educacion_media) %>% 
-        # dividing columns by 100 to clean then and put them between 0 and 1
+        # dividing columns by 100 so that they're between 0 and 1
         mutate_at(vars(percent_analfabeto, percent_sin_servicio_electrico, 
                        percent_sin_agua_segura,
                        percent_sin_saneamiento_mejorado,
@@ -267,35 +292,34 @@ parr <- u_ben %>%
                matricula_2017_educacion_media, poblacion_total_2011, hogares_2011,
                poblacion_infantil_menor_de_12_anos, poblacion_adolescentes_de_12_a_17_anos, 
                poblacion_de_18_anos_y_mas)),
-             by = "pcode3") %>% 
+            by = "pcode3") %>% 
   # mutating new variables and making sure NAs become 0s 
-  mutate(beneficiarios          = ifelse(is.na(beneficiarios), 0, beneficiarios),
-         org_count              = ifelse(is.na(org_count), 0, org_count),
-         sector_count           = ifelse(is.na(sector_count), 0, sector_count), 
-         educacion_ben             = ifelse(is.na(educacion_ben), 0, educacion_ben),
-         nutricion_ben             = ifelse(is.na(nutricion_ben), 0, nutricion_ben),
-         proteccion_ben            = ifelse(is.na(proteccion_ben), 0, proteccion_ben),
-         salud_ben                 = ifelse(is.na(salud_ben), 0, salud_ben),
-         seguridad_alimentaria_ben = ifelse(is.na(seguridad_alimentaria_ben), 0, seguridad_alimentaria_ben),
-         wash_ben                  = ifelse(is.na(wash_ben), 0, wash_ben),
-         ms_max_ben                = ifelse(is.na(ms_max_ben), 0, ms_max_ben),
-         ben_freq                  = ifelse(is.na(ben_freq), 0, ben_freq),
-         not_covered_pobre      = pob_pobre - beneficiarios,
+  mutate(beneficiarios  = ifelse(is.na(beneficiarios), 0, beneficiarios),
+         org_count      = ifelse(is.na(org_count), 0, org_count),
+         sector_count   = ifelse(is.na(sector_count), 0, sector_count), 
+         educacion_ben  = ifelse(is.na(educacion_ben), 0, educacion_ben),
+         nutricion_ben  = ifelse(is.na(nutricion_ben), 0, nutricion_ben),
+         proteccion_ben = ifelse(is.na(proteccion_ben), 0, proteccion_ben),
+         salud_ben      = ifelse(is.na(salud_ben), 0, salud_ben),
+         sa_ben         = ifelse(is.na(sa_ben), 0, sa_ben),
+         wash_ben       = ifelse(is.na(wash_ben), 0, wash_ben),
+         ms_ben_max     = ifelse(is.na(ms_ben_max), 0, ms_ben_max),
+         ben_freq       = ifelse(is.na(ben_freq), 0, ben_freq),
+         not_reached            = pob_pobre - beneficiarios,
          coverage_percent       = beneficiarios / poblacion_2019,
          coverage_pobre_percent = beneficiarios / pob_pobre,
          percent_total_ben      = beneficiarios / sum(beneficiarios),
-         multisector_percent    = ms_max_ben / ben_freq, 
+         multisector_percent    = ms_ben_max / ben_freq, 
          org_present            = ifelse(beneficiarios > 0, TRUE, FALSE),
          pob_pobre_score     = rescale(pob_pobre, to = c(0,1)), 
          percent_pobre_score = rescale(percent_pobre, to = c(0,1)), 
          poverty_score       = (pob_pobre_score + percent_pobre_score) / 2)
 
-
 # taking a subset of parr to only get parrishes where the number of beneficiaries does not exceed the number of poor persons
 
 parr0 <- parr %>% 
-  filter(not_covered_pobre >= 1) %>% 
-  mutate(gap_score = (rescale(not_covered_pobre, to = c(0,1)) + percent_pobre_score) / 2)
+  filter(not_reached >= 1) %>% 
+  mutate(gap_score = (rescale(not_reached, to = c(0,1)) + percent_pobre_score) / 2)
 
 ```
 
@@ -304,55 +328,88 @@ parr0 <- parr %>%
 write_csv(parr0, "parr0.csv")
 ```
 
-# REDO!!!
-make sure you take the disaggregations into account in the calculation 
+## 2. Summary of coverage and gaps
 
-```{r}
-act_ben %>% 
-      filter(categoriadeactividad != "Vacunacion") %>% 
-      group_by(ubicacion, desagregacion, sector) %>% 
-      slice(which.max(beneficiarios)) %>% 
-      ungroup() %>% 
-      group_by(ubicacion, sector, pcode3) %>% 
-      pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
-      replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
-                        Seguridad_Alimentaria = 0, Proteccion_NNA = 0,
-                        Proteccion_General = 0, Proteccion_GBV = 0)) %>%
-  # I think you have to summarise by pcode3 and disaggregation, 
-  # calculate the frequencies and ben_max,
-  # then only do you group by pcode3 and do the sector count
-      group_by(pcode3) %>% 
-      summarise(nutricion_ben = sum(Nutricion),
-                  proteccion_ben = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
-                  wash_ben = sum(WASH),
-                  salud_ben = sum(Salud),
-                  educacion_ben = sum(Educacion),
-                  seguridad_alimentaria_ben = sum(Seguridad_Alimentaria)) %>% 
-        mutate(sector_count = rowSums(select(., -pcode3)!=0), 
-                 ben_freq = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
-                            educacion_ben + seguridad_alimentaria_ben,
-                 ben_max = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
-                                educacion_ben, seguridad_alimentaria_ben),
-                 ms_max_ben = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max))
+### 2a. Map of parrishes by gaps
+
+```{r MAP-REF, include = FALSE}
+# reading in the shapefile
+pcode3_shape <- st_read("C:/Users/Sean Ng/Documents/R/coverage_gaps_venezuela/ven_admbnda_adm3_20180502/ven_admbnda_adm3_20180502.shp",
+                        quiet = TRUE) %>% 
+  rename(pcode1 = ADM1_PCODE,
+         pcode2 = ADM2_PCODE,
+         pcode3 = ADM3_PCODE) %>% 
+  mutate(pcode3 = recode(pcode3,
+                         "VE030102" = "VE030101", # only Anaco exists, according to the census
+                         "VE031901" = "VE031900", # somehow the census and the shapefiles conflict
+                         "VE070301" = "VE070300")) %>%  # here too
+# simplying to remove slivers -- let's see if this works 
+# it's a bit abstract at 0.05, but the slivers ARE gone and it looks not bad 
+# figuring this out was maddening, I can't believe you spent so long on cosmetic items 
+  ms_simplify(keep = 0.05, keep_shapes = TRUE)
+
 ```
 
+```{r coverage-map-not-covered-pobre}
+# parrishes with negative poor persons are recoded as "0" so they won't mess up the scale
+# even though this means that their tooltips are dropped 
 
-## Summary of coverage and gaps
+gaps_map <- parr %>% 
+  right_join(pcode3_shape, by = "pcode3") %>% 
+  st_as_sf() %>% 
+  mutate(not_reached = ifelse(not_reached < 0.1, 0, not_reached)) %>% 
+  mutate(not_reached = round(not_reached, digits = 0)) %>%
+  mutate_at(vars(percent_pobre, percent_urbana), ~(round(., digits = 2))) %>% 
+  ggplot() +
+  geom_sf(aes(fill = not_reached,
+              text = paste0(parroquia,",", "\n", 
+                           municipio, ",", "\n",
+                           estado, "\n", 
+                           "not reached: ", not_reached, "\n",
+                           "org count: ", org_count, "\n",
+                           "poverty incidence: ", percent_pobre, "\n",
+                           "percent urban: ", percent_urbana)),
+          size = 0.1) +
+  scale_fill_viridis_c(option = "turbo", trans = "log10") +
+  theme_void() +
+  theme(legend.title = element_text(size = 7),
+        legend.text = element_text(size = 7),
+        plot.title = element_text(size = 10)) +
+  labs(fill = "Poor persons \nnot reached") +
+  ggtitle("Map of parrishes by gaps in population reached")
 
-> As a starting point, all `r nrow(parr)` parrishes have been split into three groups -- _over_, where the number of unique beneficiaries reached exceeds the number of poor persons in that parrish; _under_, where the coverage is less than the number of poor persons; and _not reached_, comprising a total of `r nrow(filter(parr, beneficiarios == 0))` parrishes, where no activities have occurred. 
+# so are you saying that if I change the fill to viridis in the later plot, I can use hoveron = fill?
+# no you can't. 
+ggplotly(gaps_map, tooltip = c("text")) %>%
+  layout(showlegend = TRUE, legend = list(font = list(size = 6))) %>% 
+  style(hoveron = "fill") %>% 
+  layout(title = list(text = paste0("Map of parrishes by number poor persons not reached",
+                                    "<br>",
+                                    "<sup>",
+                                    "mouse over for details; drag and click to select and zoom; double-click legend select/deselect","</sup>")))
 
-> However, it should be noted that a total of **`r round(filter(parr, beneficiarios == 0) %>% {sum(.$pob_pobre)}, digits = 0)`** poor persons reside in the **`r nrow(filter(parr, beneficiarios == 0))`** parrishes that have not been reached, this is only **`r round(filter(parr, beneficiarios == 0) %>% {sum(.$pob_pobre)} / sum(parr$not_covered_pobre) *100, digits = 0)`%** of the **`r round(sum(parr$not_covered_pobre), digits = 0)`** poor persons not covered by response activities. This indicates that 1) there is much room to expand in the parrishes where we are already present and that 2) sparely populated, remote and, consequently, poorer parrishes have, so far, been left out of the response. 
+```
+
+Nationwide, **`r format(round(sum(parr0$not_reached), digits = 0), big.mark = ",")`** poor persons have not been reached by response activities -- this means that **`r round(sum(parr0$not_reached) / sum(parr0$pob_pobre) * 100, digits = 1)`%** all the poor persons in the country have yet to be reached. 
+
+<br>
+
+### 2b. Grouping parrishes by coverage
+
+As a starting point, all `r nrow(parr)` parrishes have been split into three groups -- _over_, where the number of unique beneficiaries reached exceeds the number of poor persons in that parrish; _under_, where the coverage is less than the number of poor persons; and _no coverage_, comprising a total of `r nrow(filter(parr, beneficiarios == 0))` parrishes, where no activities have occurred. 
+
+However, it should be noted that a total of **`r round(sum(parr0$not_reached), digits = 0) %>% format(big.mark = ",")`** poor persons reside in the **`r nrow(filter(parr, beneficiarios == 0))`** parrishes that have not been reached, this is only **`r round(filter(parr, beneficiarios == 0) %>% {sum(.$pob_pobre)} / sum(parr$not_reached) *100, digits = 0)`%** of the **`r round(sum(parr$not_reached), digits = 0) %>% format(big.mark = ",")`** poor persons not covered by response activities. This indicates that 1) there is much room to expand in the parrishes where we are already present and that 2) sparely populated, remote and, consequently, poorer parrishes have, so far, been left out of the response. 
 
 
 ```{r}
 parr %>% 
-  mutate(coverage_type = case_when(not_covered_pobre <= 0 ~ "over",
-                                   not_covered_pobre > 0 & beneficiarios >= 1 ~ "under", 
-                                   beneficiarios == 0 ~ "not_reached")) %>% 
+  mutate(coverage_type = case_when(not_reached <= 0 ~ "over",
+                                   not_reached > 0 & beneficiarios >= 1 ~ "under", 
+                                   beneficiarios == 0 ~ "no_coverage")) %>% 
   group_by(coverage_type) %>% 
   summarise(parroquias = n(),
             beneficiarios = sum(beneficiarios),
-            not_covered_pobre = sum(not_covered_pobre), 
+            not_reached = sum(not_reached), 
             avg_org_count = mean(org_count),
             percent_pobre = (sum(pob_pobre)) / (sum(poblacion_2019)),
             percent_urbana = (sum(pob_urbana)) / (sum(poblacion_2019)),
@@ -362,45 +419,50 @@ parr %>%
             avg_sector_count = mean(sector_count)) %>% 
   gather(key = variable, value = value, 2:ncol(.)) %>% 
   spread_(key = names(.)[1], value = 'value') %>% 
-  relocate(not_reached, .after = under) %>% 
+  relocate(no_coverage, .after = under) %>% 
   pander(big.mark = ",")
-  
+
+
 ```
 
-> We note that the **`r nrow(parr[parr$not_covered_pobre <= 0,])`** parrishes in the _over_ category are much less poor and much more urban despite having **`r round(filter(parr, not_covered_pobre <= 0) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 0)`%** of all beneficiaries. These parrishes are shown in the table below. And, as can be seen from `not_covered_pobre`, the number beneficiaries in the _over_ category has greatly exceeded the number of poor persons. 
+We note that the **`r nrow(parr[parr$not_reached <= 0,])`** parrishes in the _over_ category are much less poor and much more urban despite having **`r round(filter(parr, not_reached <= 0) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 0)`%** of all beneficiaries. These parrishes are shown in the table below. And, as can be seen from `not_reached`, the number beneficiaries in the _over_ category has greatly exceeded the number of poor persons. 
 
-### Top parrishes in terms of coverage
+<br>
 
-> Going forrward, parrishes (admin level 3) will be the main administrative unit of reference. Unlike in the 5W cleaning and reporting document, where we focused on municipalities, greater precision is needed for a coverage and gaps analysis. Furthermore, we should always endeavour to maximise the usage of all available data. 
+### 2c. Top parrishes in terms of coverage
 
-> The **`r nrow(parr[parr$not_covered_pobre <= 0,])`** parrishes below will largely be excluded in the  remainder of this report as it is clear that no further resources should be allocated to them: 
+Parrishes (admin level 3) will be the main administrative unit of reference. Unlike in the 5W cleaning and reporting document, where we focused on municipalities, greater precision is needed for a coverage and gaps analysis. Furthermore, we should always endeavour to maximise the usage of all available data. 
+
+The **`r nrow(parr[parr$not_reached <= 0,])`** parrishes below will largely be excluded in the  remainder of this report as it is clear that no further resources should be allocated to them: 
 
 ```{r}
 parr %>% 
-  mutate(coverage_type = case_when(not_covered_pobre <= 0 ~ "over",
-                                   not_covered_pobre > 0 & beneficiarios >= 1 ~ "under", 
+  mutate(coverage_type = case_when(not_reached <= 0 ~ "over",
+                                   not_reached > 0 & beneficiarios >= 1 ~ "under", 
                                    beneficiarios == 0 ~ "not_reached")) %>%  
   filter(coverage_type == "over") %>% 
   select(estado, municipio, estado, parroquia, beneficiarios, pob_pobre) %>%
   mutate(coverage_percent = beneficiarios / pob_pobre * 100) %>% 
   arrange(desc(beneficiarios)) %>% 
   pander(big.mark = ",")
+
 ```
 
-> Though it should be mentioned that it is likely that partners have reported activities which occurred in other parts of the capital in Altagracia, as the total number of benefificaries reached in the whole of Distrito Capital is only `r summarise(parr, beneficiarios = sum(beneficiarios[municipio == "LIBERTADOR"]))`. It is necessary to check back with partners about this; nevertheless, this is the information we have on hand. 
+Though it should be mentioned that it is likely that partners have reported activities which occurred in other parts of the capital in Altagracia, as the total number of benefificaries reached in the whole of Distrito Capital is only `r summarise(parr, beneficiarios = sum(beneficiarios[municipio == "LIBERTADOR"])) %>% format(big.mark = ",")`. It is necessary to check back with partners about this; nevertheless, this is the information we have on hand. 
 
+<br>
 
-## Geographical analysis of Gaps
+## 3. Geographical analysis of Gaps
 
-### Barplot of coverage and gaps by state
+### 3a. Barplot of coverage and gaps by state
 _mouse over plot for more details_
 
-```{r parr0-state-PLOT}
-# ref for printng state_ord. I'm really not sure how to extract all the variables as a list
+```{r parr0-state-PLOT, fig.height=5}
+# ref for printing state_ord. I'm really not sure how to extract all the variables as a list
 # parr0 %>% 
 #   group_by(estado) %>% 
-#   summarise(not_covered_pobre = sum(not_covered_pobre)) %>% 
-#   arrange(desc(not_covered_pobre)) %>% 
+#   summarise(not_reached = sum(not_reached)) %>% 
+#   arrange(desc(not_reached)) %>% 
 #   select(estado) %>% as.list(as.data.frame(t(.)))
 
 state_ord <- c("ZULIA", "LARA", "CARABOBO", "MIRANDA", "ANZOATEGUI", "ARAGUA", "BOLIVAR",
@@ -416,23 +478,27 @@ stack_text <- parr0 %>%
   arrange(desc(total)) 
 
 state_stack <- parr0 %>% 
-  select(estado, beneficiarios, not_covered_pobre) %>% 
+  select(estado, beneficiarios, not_reached) %>% 
   group_by(estado) %>%
-  summarise(beneficiarios = sum(beneficiarios), 
-            not_covered_pobre = sum(not_covered_pobre)) %>% 
-  pivot_longer(c(beneficiarios,not_covered_pobre),
+  summarise(beneficiarios = round(sum(beneficiarios), digits = 0), 
+            not_reached = round(sum(not_reached), digits = 0)) %>% 
+  pivot_longer(c(beneficiarios,not_reached),
                names_to = "pob_type", values_to = "total") %>% 
   
   ggplot(aes(x = estado, y = total)) +
   geom_col(aes(fill = pob_type)) +
   scale_y_continuous(label = comma) +
   scale_x_discrete(limits = state_ord) +
+  scale_fill_manual(values = c("coral", "cornflowerblue")) +
   geom_text(data = stack_text, aes(y = 20000,
                                    label = percent_reached), size = 2) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5),
-        axis.text.y = element_text(size = 5),
-        axis.title.y = element_text(size = 8)) +
-  xlab("") + ylab("Poor persons") + labs(fill = "")
+  theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 5),
+        axis.text.y  = element_text(size = 5),
+        axis.title.y = element_text(size = 8),
+        plot.title   = element_text(size = 11)) +
+  xlab("") + ylab("Poor persons") + 
+  labs(fill = "",
+       title = "Barplot of poor persons by state")
 
 ggplotly(state_stack) %>% 
   layout(legend = list(font = list(size = 6))) %>% 
@@ -440,182 +506,528 @@ ggplotly(state_stack) %>%
 
 ```
 
-> The states where the highest proportions of poor persons have been reached (listed at the bottom of each bar) are Distrito Capital, Tachira, Bolivar, Delta Amacuro, Miranda and Zulia. Carabobo has the lowest percentage of its poor population covered. On average, after the exclusion of the top `r nrow(parr[parr$not_covered_pobre <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide.  
+**`r round(filter(parr, estado %in% c("DISTRITO CAPITAL", "MIRANDA", "ZULIA", "TACHIRA", "BOLIVAR")) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 0)`%** of all beneficiaries are from the states of Distrito Capital, Miranda, Tachira, Bolivar and Zulia, largely corresponding to the locations of UNICEF offices, indicating that there is significant bias in coverage.
 
-> Let us now move down to a lower level of granularity as state-level analysis is stil quite superficial: 
+>rephrase
 
+The states where the highest proportions of poor persons have been reached (listed at the bottom of each bar) are Distrito Capital, Tachira, Bolivar, Delta Amacuro, Miranda and Zulia. Carabobo has the lowest percentage of its poor population covered. On average, after the exclusion of the top `r nrow(parr[parr$not_reached <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide. 
 
-### Scatterplot of gaps by parrish 
+Whilst there are many poor persons yet to be reached in states where we have relatively high coverage, there is a need to ensure that our operational footprint and the consequent resources allocated are equitable -- the crisis in Venezuela is nationwide and unlike an earthquake or a typhoon where there is an epicentre or a stormpath, there is no programmatic rationale to only focus on a few areas. 
 
-> From the scatterplot below -- where each point is a parrish -- we see that there is great variation in the number of poor persons not covered (size) as well as how concentrated they are in a given parrish (y-axis, poverty incidence); both these factors weigh heavily in programming strategies as well as in the ease of beneficiary selection.  
+Let us now move down to a lower level of granularity as state-level analysis is still quite superficial: 
 
-> We also observe that the parrishes with the greatest numbers of not covered (found at _poor persons:_ 10,000-100,000; _poverty incidence:_ 0.25-0.50) have a much higher than average number of organisations present (colour). This means that operational barriers are much lower in accessing these populations than the parrishes in light blue found in the middle of the plot.
+<br>
 
-```{r parrplot-PLOTLY}
+### 3b. Scatterplot of gaps by parrish 
+
+From the scatterplot below -- where each point is a parrish -- we see that there is great variation in the number of poor persons not covered (size) as well as how concentrated they are in a given parrish (y-axis, poverty incidence); both these factors weigh heavily in programming strategies as well as in the ease of beneficiary selection.  
+
+We also observe that the parrishes with the greatest numbers of not covered (found at _poor persons:_ 10,000-100,000; _poverty incidence:_ 0.25-0.50) have a much higher than average number of organisations present (colour). This means that operational barriers are much lower in accessing these populations than the parrishes in light blue found in the middle of the plot; and, for agencies truly unable to expand outside their current footprints, there are still many beneficiaries who are not covered or -- as we will discuss in the next section -- have only been reached with the interventions of one sector.
+
+```{r parrplot-PLOTLY, fig.height=5}
 
 parrplot <- parr0 %>% 
-  mutate_at(vars(pob_pobre, not_covered_pobre, org_count), ~(round(.))) %>% 
+  mutate_at(vars(pob_pobre, not_reached, org_count), ~(round(.))) %>% 
   mutate(percent_pobre = round(percent_pobre, digits = 2))%>% 
-  ggplot(aes(x = not_covered_pobre, y = percent_pobre, 
+  ggplot(aes(x = not_reached, y = percent_pobre, 
              colour = org_count, 
              text = paste0(parroquia, ", ", estado))) +
-  geom_point(aes(size = not_covered_pobre), alpha = 0.75) +
+  geom_jitter(aes(size = not_reached), alpha = 0.75) +
   scale_colour_gradientn(
     colours = c("cornflowerblue", "tomato", "firebrick")) +
   scale_x_continuous(trans = "log10", labels = comma) + 
   scale_size_continuous(range = c(0.3, 5)) +
   xlab("Not covered poor") + ylab("Poverty incidence") +
-  labs(colour = "Number of \norganisations") +
+  labs(colour = "Number of \norganisations", 
+       title = "Scatterplot of parrishes by poor persons not covered and poverty incidence") +
   theme(legend.title = element_text(size = 7),
-        legend.text = element_text(size = 7))
+        legend.text = element_text(size = 7),
+        plot.title = element_text(size = 11),
+        axis.title = element_text(size = 8.5))
+  
 
 ggplotly(parrplot, tooltip = c("y", "x", "size", "text", "colour")) %>% 
-           layout(showlegend = TRUE, legend = list(font = list(size = 7))) %>% 
-           config(displayModeBar = FALSE)
+           layout(showlegend = TRUE, legend = list(font = list(size = 7))) %>%
+           config(displayModeBar = FALSE) %>% 
+  layout(title = list(text = paste0(
+    "Scatterplot of parrishes by number poor persons not reached and poverty incidence",
+                                    "<br>",
+                                    "<sup>",
+                                    "size: number of poor persons not reached; colour: number of organisations present; drag and click to select and zoom","</sup>")))
 
 ```
-_x-axis: number of poor persons; y-axis: poverty incidence; size: number of poor persons not covered; colour: number of organisations present_
-_mouse over for details_
 
+<br> 
 
-## Coverage and gaps in multi-sector programming
+## 4. Multi-sector programming
 
-> The number of organisations present in a parrish is highly correlated with the number of sectors present there ( a correlation coefficient of `r round(cor(parr0$org_count, parr0$sector_count, method = c("pearson")), digits = 3)`). A scatterplot would be very similar to the one above and not deepen our understanding of the actual coverage. 
+Just because two Clusters operate in the same area do not mean their beneficiaries coincide. As an estimate, we calculated a theoretical maximum number of multi-sector beneficiaries per parrish, expressed below as `multi_sector_ben` (exact calculation and explanation in the code chunk below). Parrishes have then been split into groups based on the number of sectors present within them:  
 
-> Just because two Clusters operate in the same area do not mean their beneficiaries coincide. As an esimate, we calculated a theoretical maximum number of multi-sector beneficiaries per parrish, expressed below as `multi_sector_ben` -- the exact calculation can be reviewed by unhiding the code below. Parrishes have then been split into groups based on the number of sectors present within them:  
+### 4a. Summary table of multi-sector coverage 
 
-```{r}
+```{r multi-sector-ben-TABLE-and-REF}
 # calculation for multi-sector beneficiaries. 
-# It is commented out here because this code was already run earlier as part of parr. 
 # Basically, beneficiaries per parrish are aggregated into 
 # sector subtotals and a beneficiary frequency total.  
 # The maximum value of the sector subtotals is compared against the beneficiary frequency total, 
 # if the maximum value is equal to the frequency total, then there is only one sector,
-# when the maximum value is less than the frequency total, the difference between the two
-# (or the sum of all other sector subtotals) 
+# if the maximum value is less than the frequency total, 
+# the difference between the two (or the sum of all other sector subtotals) 
 # becomes the theoretical maximum number of multisector beneficiaries.
-# The real number of multisector beneficiaries is likely much lower 
-# and can only be verified througm sampled post-distribution or post-intervention monitoring,
-# which I have never actually seen in the field. 
 
-# performing this calculation at admin level 3 makes sense as a parrish is small enough
-# that there is a very high likelihood 
+# Performing this calculation at admin level 3 makes sense as a parrish is small enough
+# that there it is realistic to assume that overlaps in beneficiaries between sectors exist --
+# i.e. that females under 18 in a parrish who are beneficiaries of nutrition 
+# and females under 18 in that same parrish who are beneficiaries of WASH are the same people. 
 
-# act_ben %>% 
-#       filter(categoriadeactividad != "Vacunacion") %>% 
-#       group_by(ubicacion, desagregacion, sector) %>% 
-#       slice(which.max(beneficiarios)) %>% 
-#       ungroup() %>% 
-#       group_by(ubicacion, sector, pcode3) %>% 
-#       pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
-#       replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
-#                         Seguridad_Alimentaria = 0, Proteccion_NNA = 0,
-#                         Proteccion_General = 0, Proteccion_GBV = 0)) %>%
-#       group_by(pcode3) %>% 
-#       summarise(nutricion_ben = sum(Nutricion),
-#                   proteccion_ben = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
-#                   wash_ben = sum(WASH),
-#                   salud_ben = sum(Salud),
-#                   educacion_ben = sum(Educacion),
-#                   seguridad_alimentaria_ben = sum(Seguridad_Alimentaria)) %>% 
-#         mutate(sector_count = rowSums(select(., -pcode3)!=0), 
-#                  ben_freq = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
-#                             educacion_ben + seguridad_alimentaria_ben,
-#                  ben_max = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
-#                                 educacion_ben, seguridad_alimentaria_ben),
-#                  ms_max_ben = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max)))
+# Although I do feel this calculation to be very charitable 
+# We can't really do much more unless there is a beneficiary register. 
+# The real number of multisector beneficiaries is likely MUCH LOWER 
+# but that can only be verified through sampled large-scale post-distribution/post-intervention monitoring,
+# which is extremely rare. 
+# I actually could have raised this with the third-party monitors that UNICEF, 
+# so it's an oversight on my part as well.
 
-parr0 %>% 
-  filter(beneficiarios != 0) %>% 
+ act_ben %>%
+  # vaccination filtered out  
+   filter(categoriadeactividad != "Vacunacion") %>% 
+             group_by(ubicacion, desagregacion, sector) %>% 
+                 slice(which.max(beneficiarios)) %>% 
+                 ungroup() %>%
+                 group_by(ubicacion, sector, pcode3) %>% 
+                 pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
+                 replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
+                                 Seguridad_Alimentaria = 0, Proteccion = 0)) %>%
+             group_by(pcode3, desagregacion) %>% 
+             summarise(nutricion_ben   = sum(Nutricion),
+                       proteccion_ben  = sum(Proteccion),
+                       wash_ben        = sum(WASH),
+                       salud_ben       = sum(Salud),
+                       educacion_ben   = sum(Educacion),
+                       sa_ben          = sum(Seguridad_Alimentaria), .groups = "drop") %>% 
+             mutate(ben_freq   = nutricion_ben + proteccion_ben + wash_ben + salud_ben +
+                                 educacion_ben + sa_ben,
+                    ben_max    = pmax(nutricion_ben, proteccion_ben, wash_ben, 
+                                      salud_ben, educacion_ben, sa_ben),
+                    ms_ben_max = ifelse(ben_max >= ben_freq - ben_max, 
+                                        ben_freq - ben_max, 
+                                        ben_max)) %>% 
+             group_by(pcode3) %>% 
+             summarise(nutricion_ben  = sum(nutricion_ben),
+                       proteccion_ben = sum(proteccion_ben),
+                       wash_ben       = sum(wash_ben),
+                       salud_ben      = sum(salud_ben),
+                       educacion_ben  = sum(educacion_ben),
+                       sa_ben         = sum(sa_ben),
+                       ben_freq   = sum(ben_freq),
+                       ben_max    = sum(ben_max),
+                       ms_ben_max = sum(ms_ben_max), .groups = "drop") %>% 
+             mutate(sector_count = rowSums(select(., ends_with("_ben")) != 0)) %>% 
   group_by(sector_count) %>% 
-  summarise(beneficiarios = sum(beneficiarios),
-            parroquias = n(),
-            multisector_percent = sum(ms_max_ben) / sum(ben_freq)) %>% 
-  mutate(multi_sector_ben = beneficiarios * multisector_percent,
-         one_sector_ben = beneficiarios - multi_sector_ben) %>% 
-  select(-beneficiarios) %>% 
-  relocate(multisector_percent, .after = one_sector_ben) %>% 
+  # filtering out the parrishes with oversubscription 
+  filter(pcode3 %out% c("VE010101", "VE070104", "VE070502", "VE070506", "VE081401", "VE100401",
+                        "VE150701", "VE151901", "VE151905", "VE200101", "VE200403")) %>% 
+  summarise(parroquias = n(),
+            multi_sector_ben = sum(ms_ben_max),
+            one_sector_ben = sum(ben_freq) - sum(ms_ben_max), 
+            `multisector_%` = round(sum(ms_ben_max) / sum(ben_freq) * 100, digits = 2),
+            .groups = "drop") %>% 
+  relocate(`multisector_%`, .after = one_sector_ben) %>% 
   pander()
 
 ```
 
-> Overall, the results are not encouraging, 
+Overall, the results are not encouraging -- only **`r round(sum(parr0$ms_ben_max) / sum(parr0$ben_freq) * 100, digits = 1)`%** of all beneficiaries have received multi-sector support. When vaccinations are included, the percentage drops to **8.7%**. But we will exclude vaccinations for this analysis as their footprint is determined by government priorities, which may or may not align with the humanitarian imperative; furthermore, the government was not able to provide vaccination records at the parrish level, many times defaulting to municipal or state-level reporting. 
+
+As the leader of the Education, Nutrition, WASH and Child Protection Clusters, UNICEF supported activities reaching **`r round((filter(act_ben, org_lider == "UNICEF") %>% {sum(.$beneficiarios)}) / sum(act_ben$beneficiarios) * 100, digits = 0)`%** of all beneficiaries. Meaning that this the low percentage of multi-sector support could be resolved almost entirely by better inter-section coordination and better programmatic oversight within UNICEF -- this will be even more apparent in sections 4c and 4d. 
+
+<br>
+
+### 4b. State-level gaps in multi-sector programming
+
+> I think you should consider starting the section with this. 
 
 ```{r}
-round(sum(parr0$ms_max_ben) / sum(parr0$ben_freq) *100, digits = 1)
+ms_lm <- lm(multisector_percent ~ ben_freq, data = parr0)
+summary(ms_lm)$r.squared
+
+
+
+glimpse(parr0)
 ```
 
 
-> In this particular dataset, it should be noted that as the leader of the Education, Nutrition, WASH and Child Protection Clusters, UNICEF is supporting **`r round((filter(act_ben, org_lider == "UNICEF") %>% {sum(.$beneficiarios)}) / sum(act_ben$beneficiarios) * 100, digits = 0)`%** of all activities reported to these Clusters.
+```{r ms-state-scatter-PLOT, fig.height=5}
 
-> In general, the number of sectors present in a parrish is negatively correlated with both poverty incidence and as well as rate of urbanisation. 
+ms_scatter <- parr0 %>% 
+  group_by(estado) %>% 
+  summarise(multi_sector_ben = sum(ms_ben_max),
+            one_sector_ben = round(sum(ben_freq) - sum(ms_ben_max), digits = 0),
+            ben_freq = round(sum(ben_freq), digits = 0)) %>% 
+  mutate(multi_sector_percent = round(multi_sector_ben / ben_freq * 100, digits = 1),
+         one_sector_percent = round(one_sector_ben / ben_freq * 100, digits = 1)) %>% 
+  ggplot(aes(x = ben_freq, 
+             y = multi_sector_percent)) +
+  geom_point(aes(size = one_sector_ben), 
+             alpha = 0.8, colour = "coral") +
+  geom_text(aes(label = estado), size = 1.5) +
+  scale_x_continuous(trans = "log10", labels = comma) +
+  scale_size_continuous(range = c(0.3, 10)) +
+  xlab("Beneficiary frequencies") + ylab("Percentage received multi-sector support") +
+  labs(title = "Scatterplot of states by beneficiary frequencies and multi-sector coverage") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 8.5))
+
+ggplotly(ms_scatter, tooltip = c("x", "y", "text", "size")) %>% 
+  layout(legend = list(font = list(size = 6))) %>% 
+  config(displayModeBar = FALSE) %>% 
+  layout(title = list(text = paste0(
+    "Scatterplot of states by beneficiary frequencies and multi-sector coverage",
+                                    "<br>",
+                                    "<sup>",
+                                    "size: beneficiaries who only received support from one sector; mouse over for details","</sup>")))
 
 
-## Reference Table 
+```
 
-> Move this reference table to the back 
+There is a very loose positive relationship (r-squared = `r cor(parr0$multisector_percent, parr0$ben_freq, use = "complete.obs")^2 %>% round(digits = 3)`) between the number of beneficiary frequencies and the percentage of those beneficiary frequencies reached by interventions from multiple sectors. This is apparent when 
+
+Including xx parishes where only one sector exists 
+
+In fact, we note the seeds of this behaviour by the higher rates of multi-sector coverage in the states where UNICEF has offices (Bolivar, Tachira, Zulia and Distrito Capital). 
 
 ```{r}
-parr0 %>% 
-  mutate(proteccion_ben = rowSums(.[5:7])) %>% 
-  select(-c(proteccionGBV_ben, proteccionGeneral_ben, proteccionNNA_ben, percent_total_ben, seguridad_alimentaria_ben)) %>% 
-  mutate(sector_count = rowSums(select(., ends_with("_ben"))!=0)) %>% 
-  mutate(educacion_only = ifelse(educacion_ben > 0, "educacion", ""),
-         nutricion_only = ifelse(nutricion_ben > 0, "nutricion", ""),
-         salud_only = ifelse(salud_ben > 0, "salud",  ""),
-         wash_only = ifelse(wash_ben > 0, "wash", ""),
-         proteccion_only = ifelse(proteccion_ben > 0, "proteccion", ""),
-         sectors_present = str_trim(paste0(educacion_only, " ", nutricion_only, " ", proteccion_only, " ", 
-                                  salud_only, " ", wash_only))) %>% 
-  mutate_at(vars(pob_pobre, not_covered_pobre, org_count), ~(round(.))) %>% 
-  mutate_at(vars(percent_pobre, percent_urbana), ~(round(., digits = 2))) %>% 
-  select(estado, municipio, parroquia, pcode3,  
-         percent_pobre, percent_urbana, not_covered_pobre, beneficiarios,
-         org_count, sector_count, sectors_present) %>% 
-  arrange(desc(not_covered_pobre)) %>% 
-  datatable(filter = "top", options = list(pageLength = 10, scrollX = TRUE)) %>% 
-  DT::formatStyle(columns = colnames(.), fontsize = "12pt")
+ms_scatter <- parr0 %>% 
+  mutate(multi_sector_percent = round(ms_ben_max / ben_freq * 100, digits = 1),
+         one_sector_percent = round((ben_freq - ms_ben_max) / ben_freq * 100, digits = 1),
+         multi_sector_ben = round(ms_ben_max, digits = 0),
+         one_sector_ben = round(ben_freq - ms_ben_max, digits = 0),
+         ben_freq = round(ben_freq, digits = 0)) %>% 
+  ggplot(aes(x = ben_freq, 
+             y = multi_sector_percent, 
+             text = paste0(parroquia,",", "\n", 
+                           municipio, ",", "\n",
+                           estado),
+             colour = estado)) +
+  geom_point(aes(size = one_sector_ben), 
+             alpha = 0.8) +
+  scale_x_continuous(trans = "log10", labels = label_comma(accuracy = 1)) +
+  scale_size_continuous(range = c(0.1, 5)) +
+  scale_colour_manual(values = c(rep("coral",24))) +
+  xlab("Beneficiary frequencies") + ylab("Percentage received multi-sector support") +
+  labs(title = "Scatterplot of parrishes by beneficiary frequencies and multi-sector coverage", 
+       size = "", colour = "") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 8.5))
+
+ggplotly(ms_scatter, tooltip = c("x", "y", "size", "text")) %>% 
+  layout(legend = list(font = list(size = 6))) %>% 
+  config(displayModeBar = FALSE) %>% 
+  layout(title = list(text = paste0(
+    "Scatterplot of parrishes by beneficiary frequencies and multi-sector coverage",
+                                    "<br>",
+                                    "<sup>",
+                                    "size: beneficiaries who only received support from one sector; mouse over for details","</sup>")))
+
 ```
 
 
+For those looking for specific parrishes, there is a reference table at the end of this document.  
 
+<br>
 
-## Decision trees
+### 4c. Cluster combinations
 
-> Three trees have been built to split parroquias up into targetting groups based on their 
-characteristics. The variables selected largely originate from the census dataset, with some having been upgraded by the 2019 Municipal Prioritisation Tool, which was a Principal Components Analysis of key variables related to poverty, health and mortality and violence and insecurity. 
+Before we examine each cluster in more detail, here is first an overview of the geographic reach of each cluster: 
 
-> Parrishes were split into groups based on their various characteristics; the three trees developed were used to split parrishes into groups based on: 
-
-  1. The number of poor persons not covered by humanitarian partners;
-  2. Whether or not humanitarian partners were present -- this was to understand the biases and dispositions partners had in selecting where to work; and 
-  3. The poverty score, which is just a rescaled average of the number of poor persons and the poverty incidence of each parrish. 
+```{r clust-TABLE}
+act_ben %>% 
+  filter(sector != "Seguridad_Alimentaria" & categoria != "VACUNACION") %>% 
+  mutate(sector = ifelse(str_detect(sector, "Proteccion_GBV|Proteccion_General|Proteccion_NNA"), 
+                         "Proteccion", sector)) %>% 
+  # mutate(sector = ifelse(categoria == "VACUNACION", "Vacunacion", sector))
+  # we're not going to look at vaccination in this report 
+  group_by(sector) %>% 
+  summarise(parrishes = n_distinct(pcode3),
+            beneficiary_frequencies = sum(beneficiarios)) %>% 
+  rename(cluster = sector) %>% 
+  pander(caption = "Cluster summary, vaccination exluded", big.mark = ",", style = "rmarkdown", 
+         justify = c("left", "right", "right"))
   
-> The specific variables and formulae used for each of the trees can be seen by unhiding the source code in the chunk below. 
+```
+<br> 
 
-```{r trees-REF}
- 
-# we may fit new trees in the future as more data comes in and test existing ones with new data. They aren't really meant to be predictive and more to organise a response -- we're not really using them to train a model. Tree2, in particular is very backward-looking, though it would be interesting to see how well it holds up over time. Hopefully it's not very predictive. 
+The following tables summarise the number of parrishes and beneficiary frequencies reached through the various combinations of different clusters -- we use frequencies here, as each individual might have benefitted from multiple combinations of clusters. Each subsection lists the possible pairings of a cluster: 
 
+* **`combination`** refers to the various cluster-wise pairs that exist; 
+* **`parrishes`** indicates the number of parrishes each combination is present in; 
+* **`cluster1`** and **`cluster2`** shows the number of beneficiary frequencies reached by both clusters in each pair, in the order that they appear in **`combination`**. 
+* **`pair_sum`** shows the total number of beneficiary frequencies in that pair i.e. the pair_sum for edu_nut would be the sum of education and nutrition beneficiaries. 
+* **`%ms_max`** shows the maximum percentage of multisector beneficiaries of each pair i.e. if the pair education-nutrition has 10 education beneficiaries and 30 nutrition beneficiaries, the maximum number of beneficiaries which received support from both sectors is 10, resulting in a `%_ms_max` of 25%. But, as mentioned in the notes for section 4a, this is a theoretical maximum and the actual level of coincidence is likely much lower.
+<br>
+
+```{r clust-com-REF-and-TABLE}
+# creation of reference df for the cluster combinations 
+clust_com <- parr %>% 
+  filter(ben_freq != 0) %>% 
+  select(pcode3, ben_freq, educacion_ben, nutricion_ben, salud_ben, wash_ben, proteccion_ben) %>%
+  # mutate a new column for each combination of sectors -- if edu is the first cluster in the combination, 
+  # only education beneficiaries will be used to fill values in the column 
+  mutate(edu_only = ifelse(educacion_ben == ben_freq, educacion_ben, 0),
+         edu_nut = ifelse(educacion_ben > 0 & nutricion_ben > 0, educacion_ben + nutricion_ben, 0),
+         edu_sal = ifelse(educacion_ben > 0 & salud_ben > 0, educacion_ben + salud_ben, 0),
+         edu_wash = ifelse(educacion_ben > 0 & wash_ben > 0, educacion_ben + wash_ben, 0),
+         edu_prot = ifelse(educacion_ben > 0 & proteccion_ben > 0, educacion_ben + proteccion_ben, 0),
+         nut_only = ifelse(nutricion_ben == ben_freq, nutricion_ben, 0),
+         nut_sal = ifelse(nutricion_ben > 0 & salud_ben > 0, nutricion_ben + salud_ben, 0), 
+         nut_wash = ifelse(nutricion_ben > 0 & wash_ben > 0, nutricion_ben + wash_ben, 0), 
+         nut_prot = ifelse(nutricion_ben > 0 & proteccion_ben > 0, nutricion_ben + proteccion_ben, 0),
+         sal_only = ifelse(salud_ben == ben_freq, salud_ben, 0),
+         sal_wash = ifelse(salud_ben > 0 & wash_ben > 0, salud_ben + wash_ben, 0),
+         sal_prot = ifelse(proteccion_ben > 0 & salud_ben > 0, salud_ben + proteccion_ben, 0),
+         wash_only = ifelse(wash_ben == ben_freq, wash_ben, 0),
+         prot_wash = ifelse(wash_ben > 0 & proteccion_ben > 0, wash_ben + proteccion_ben, 0),
+         prot_only = ifelse(proteccion_ben == ben_freq, proteccion_ben, 0)) %>% 
+  # pivot_longer to the clust_freq column 
+  pivot_longer(names_to = "combination", values_to = "pair_sum", 8:22) %>%
+  filter(pair_sum != 0) %>% 
+  group_by(pcode3, combination) %>% 
+  summarise(educacion_ben = mean(educacion_ben),
+            nutricion_ben = mean(nutricion_ben),
+            salud_ben = mean(salud_ben),
+            wash_ben = mean(wash_ben),
+            proteccion_ben = mean(proteccion_ben),
+            pair_sum = sum(pair_sum)) %>% 
+  # calculating the sum of frequencies in each pair
+  mutate(cluster1 = 
+           case_when(
+             str_detect(combination, "edu_nut") ~ educacion_ben,
+             str_detect(combination, "edu_sal") ~ educacion_ben,
+             str_detect(combination, "edu_wash") ~ educacion_ben,
+             str_detect(combination, "edu_prot") ~ educacion_ben,
+             str_detect(combination, "nut_sal") ~ nutricion_ben,
+             str_detect(combination, "nut_wash") ~ nutricion_ben,
+             str_detect(combination, "nut_prot") ~ nutricion_ben,
+             str_detect(combination, "sal_wash") ~ salud_ben,
+             str_detect(combination, "sal_prot") ~ salud_ben,
+             str_detect(combination, "prot_wash") ~ proteccion_ben,
+             str_detect(combination, "edu_only") ~ educacion_ben,
+             str_detect(combination, "nut_only") ~ nutricion_ben,
+             str_detect(combination, "sal_only") ~ salud_ben,
+             str_detect(combination, "wash_only") ~ wash_ben,
+             str_detect(combination, "prot_only") ~ proteccion_ben)) %>%
+  mutate(cluster2 = 
+           case_when(
+             str_detect(combination, "edu_nut") ~  nutricion_ben,
+             str_detect(combination, "edu_sal") ~  salud_ben,
+             str_detect(combination, "edu_wash") ~ wash_ben,
+             str_detect(combination, "edu_prot") ~ proteccion_ben,
+             str_detect(combination, "nut_sal") ~  salud_ben,
+             str_detect(combination, "nut_wash") ~ wash_ben,
+             str_detect(combination, "nut_prot") ~ proteccion_ben,
+             str_detect(combination, "sal_wash") ~ wash_ben,
+             str_detect(combination, "sal_prot") ~ proteccion_ben,
+             str_detect(combination, "prot_wash") ~ wash_ben,
+             str_detect(combination, "only$") ~ 0)) %>%
+  select(pcode3, combination, cluster1, cluster2, pair_sum)
+
+# pander table cluster combinations 
+rbind(
+clust_com %>%  
+  filter(str_detect(combination, "only$")) %>% 
+  group_by(combination) %>% 
+  summarise(parrishes = n(),
+            cluster1 = sum(cluster1),
+            cluster2 = sum(cluster2),
+            pair_sum = sum(pair_sum)) %>% 
+  mutate(`%ms_max` = pmin(cluster1, cluster2) / pair_sum * 100,
+         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>% 
+  arrange(desc(pair_sum)) %>% 
+  rbind(NA),
+
+clust_com %>%  
+  filter(!str_detect(combination, "only$")) %>% 
+  group_by(combination) %>% 
+  summarise(parrishes = n(),
+            cluster1 = sum(cluster1),
+            cluster2 = sum(cluster2),
+            pair_sum = sum(pair_sum)) %>% 
+  mutate(`%ms_max` = pmin(cluster1, cluster2) / pair_sum * 100,
+         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>% 
+  arrange(desc(pair_sum))
+
+) %>% 
+
+  pander(caption = "Cluster combinations", big.mark = ",", style = "rmarkdown", missing = "",  
+         justify = c("left", "right", "right", "right", "right", "right"))
+  
+```
+
+The most common pairing was between the Education and Nutrition clusters -- they coincide in `r clust_com %>% filter(combination == "edu_nut") %>% nrow()` parrishes. However, there are no concrete programmatic links between the two, with Nutrition focusing on persons older or younger than the majority of Education's beneficiaries. In the next section, we will investigate whether the substantial overlap between Nutrition and Protection at the parrish level was coordinated or -- as in the case with its overlap with Education -- due more to its wide operational presence.  
+
+However, Protection and WASH both have explicit programmatic links (in the logframe) with Education and `r clust_com %>% filter(combination == "edu_prot") %>% nrow()` and `r clust_com %>% filter(combination == "edu_wash") %>% nrow()` parrishes respectively.  fruitful avenue of investigation would be how many beneficiaries of Education also benefitted from Protection interventions and how close it is to the 37.9% theoretical maximum.
+
+Nutrition operates alone in `r clust_com %>% filter(combination == "nut_only") %>% nrow()` parrishes out of the `r act_ben %>% filter(sector == "Nutricion") %>% distinct(pcode3) %>% nrow()` that it operates in, this is the most out of any of the other clusters -- it is necessary to evaluate the extent to which other clusters can make use of the footholds established by Nutrition. 
+
+Whilst Nutrition and Health have excellent programmatic complementarity, especially with Health's focus on obstetric, antenatal and neonatal care, this combination has the lowest number of beneficiary frequencies of all the combinations. Health has the largest footprint when vaccination is included -- but, as mentioned, it is not included in this analysis as the government was not able to provide detailed data. 
+
+Almost none of WASH's beneficiary frequencies occurred in parrishes where no other clusters were present. Its great reach and blanket coverage (especially water supply and other community-level activities) mean that other clusters operating in the same areas as WASH are "guaranteed" to reach beneficiaries with multi-sector programming -- the challenges being 1. the intentionality of the multi-sector coverage and 2. matching the scale of WASH activities. WASH has excellent programmatic overlap with all other clusters. WASH is the only sector to programme specific multi-sector interventions -- WASH in schools and WASH in health/nutrition centres. 
+
+Like WASH and health, Protection has very limited beneficiary frequencies in parrishes where it operates alone. Protection coincides the most with Nutrition -- this should serve as an impulse for the creation of referral pathways between the two since both carry out screening activities; additionally, both manage some form of beneficiary-level database. This cluster has the most explicit progammatic links to Education.
+
+<br>
+
+### 4d. Activity Category 
+
+```{r cc-categoria-table}
+
+cat <- act_ben %>% 
+  filter(categoria != "VACUNACION" & categoria != "OTRO") %>% 
+  group_by(pcode3, categoria) %>% 
+  summarise(beneficiarios = sum(beneficiarios)) %>% 
+  pivot_wider(names_from = categoria, values_from = beneficiarios) %>%
+  replace(is.na(.), 0) %>% 
+  group_by(pcode3) %>% 
+  summarise(across(everything(), ~ sum(., is.na(.), 0))) %>% 
+  mutate(PREVENCION_DESNUTRICION_AGUDA = ifelse(PREVENCION_DESNUTRICION_AGUDA != 0,
+                                                "PREVENCION_DESNUTRICION_AGUDA", NA_character_),
+         CAPACITACIONES_PROTECCION = ifelse(CAPACITACIONES_PROTECCION != 0,
+                                            "CAPACITACIONES_PROTECCION",NA_character_),
+         TRATAMIENTO_DESNUTRICION_AGUDA = ifelse(TRATAMIENTO_DESNUTRICION_AGUDA != 0,
+                                                 "TRATAMIENTO_DESNUTRICION_AGUDA", NA_character_),
+         ASISTENCIA_ALIMENTARIA = ifelse(ASISTENCIA_ALIMENTARIA != 0, 
+                                         "ASISTENCIA_ALIMENTARIA", NA_character_),
+         RESILENCIA_EDUCACION = ifelse(RESILENCIA_EDUCACION != 0, "RESILENCIA_EDUCACION", NA_character_),
+         FORTALECIMIENTO_INSTITUCIONAL = ifelse(FORTALECIMIENTO_INSTITUCIONAL != 0,
+                                               "FORTALECIMIENTO_INSTITUCIONAL", NA_character_),
+         WASH_EN_EDUCACION = ifelse(WASH_EN_EDUCACION != 0, 
+                                    "WASH_EN_EDUCACION", NA_character_), 
+         SEGURIDAD_ALIM_INSTITUCIONAL = ifelse(SEGURIDAD_ALIM_INSTITUCIONAL != 0,
+                                               "SEGURIDAD_ALIM_INSTITUCIONAL", NA_character_),
+         VIH = ifelse(VIH != 0, "VIH", NA_character_),
+         SALUD_POBLACIONAL = ifelse(SALUD_POBLACIONAL != 0, 
+                                    "SALUD_POBLACIONAL", NA_character_),
+         PROVISION_DE_SERVICIO = ifelse(PROVISION_DE_SERVICIO != 0,
+                                              "PROVISION_DE_SERVICIO", NA_character_),
+         INCIDENCIA_CON_AUTORIDADES = ifelse(INCIDENCIA_CON_AUTORIDADES != 0,
+                                                "INCIDENCIA_CON_AUTORIDADES", NA_character_),
+         COMUNIDADES_SALUD = ifelse(COMUNIDADES_SALUD != 0, 
+                                    "COMUNIDADES_SALUD", NA_character_),
+         RED_INTEGRADA_SALUD = ifelse(RED_INTEGRADA_SALUD != 0, 
+                                      "RED_INTEGRADA_SALUD", NA_character_),
+         INFORMACION_RIESGOS = ifelse(INFORMACION_RIESGOS != 0, 
+                                      "INFORMACION_RIESGOS", NA_character_),
+         PROVISION_DE_SERVICIOS = ifelse(PROVISION_DE_SERVICIOS != 0,
+                                            "PROVISION_DE_SERVICIOS", NA_character_),
+         PROMOCION_HIGIENE = ifelse(PROMOCION_HIGIENE != 0, 
+                                    "PROMOCION_HIGIENE", NA_character_),
+         AGUA_EN_COMUNIDADES = ifelse(AGUA_EN_COMUNIDADES != 0, "AGUA_EN_COMUNIDADES", NA_character_),
+         WASH_EN_SALUD_NUTRICION = ifelse(WASH_EN_SALUD_NUTRICION != 0, 
+                                          "WASH_EN_SALUD_NUTRICION", NA_character_),
+         FORTALECIMIENTO_CAPACIDAD_EDUCACION = ifelse(FORTALECIMIENTO_CAPACIDAD_EDUCACION != 0,
+                                                      "FORTALECIMIENTO_CAPACIDAD_EDUCACION", NA_character_),
+         ACCESO_PERMANENCIA_ESCOLAR = ifelse(ACCESO_PERMANENCIA_ESCOLAR != 0, 
+                                             "ACCESO_PERMANENCIA_ESCOLAR", NA_character_),
+         SALUD_MATERNA_INFANTIL = ifelse(SALUD_MATERNA_INFANTIL != 0, 
+                                         "SALUD_MATERNA_INFANTIL", NA_character_),
+         SUMINISTROS_MEDICAMENTOS_BASICOS = ifelse(SUMINISTROS_MEDICAMENTOS_BASICOS != 0, 
+                                                   "SUMINISTROS_MEDICAMENTOS_BASICOS", NA_character_),
+         SANEAMIENTO = ifelse(SANEAMIENTO != 0, 
+                              "SANEAMIENTO", NA_character_),
+         RED_DE_PROTECCION = ifelse(RED_DE_PROTECCION != 0, "RED_DE_PROTECCION", NA_character_),
+         CAPACITACIONES_NUTRICION = ifelse(CAPACITACIONES_NUTRICION != 0, 
+                                           "CAPACITACIONES_NUTRICION", NA_character_),
+         ESTABLECIMIENTOS_SALUD = ifelse(ESTABLECIMIENTOS_SALUD != 0, 
+                                         "ESTABLECIMIENTOS_SALUD", NA_character_))  
+
+cat_comb<- t(combn(sort(na.omit(unique(unlist(cat[,-1])))), 2))
+
+cat_freqs <- apply(cat_comb, 1, function(C) {
+  sum(apply(cat[,-1], 1, function(a) all(C %in% a, na.rm = TRUE)))
+})
+
+as.data.frame(cat_comb) %>% 
+  mutate(count = cat_freqs) %>% 
+  left_join(act_ben %>% select(cluster1 = sector, V1 = categoria) %>% distinct()) %>% 
+  left_join(act_ben %>% select(cluster2 = sector, V2 = categoria) %>% distinct()) %>% 
+  mutate(multicluster = ifelse(cluster1 != cluster2, 1, 0),
+         combination = paste0(V1," / ", V2)) %>%
+  filter(multicluster == 1) %>% 
+  select(combination, count) %>%
+  mutate(combination =str_to_title(combination)) %>% 
+  distinct() %>% 
+  arrange(desc(count)) %>% 
+  head(15) %>% 
+  pander(caption = "Most common activity category combinations", style = "rmarkdown",  
+         justify = c("left", "right"))
+```
+
+```{r}
+act_ben %>% filter(sector == "Salud") %>% select(categoria) %>% distinct
+```
+
+
+> To close, the state of multi-sector programming is poor. There is little intentionality in which areas have multi-sector coverage and which areas do not -- multi-sector links do exist at the activity level, but this is a poor approximation of developing a programme based on the specific needs of a target area. We see much better multi-sector coverage in the areas where UNICEF has offices, indicating that field offices should be afforded greater primacy in dictating cluster footprints in their respective areas. 
+
+## 5. Decision trees
+
+### 5a. Introduction to trees -- orgasational presence
+
+To aid prioritisation of parrishes -- that is, to determine where we should be working -- it is necessary to split them up into more easily digestible groups -- we will use decision trees to do this. A prioritisation score is also another commonly-used prioritisation tool, but, as we will see, collapsing a number of variables down into one score is not always helpful. 
+
+To understand how a decision tree functions, let us construct one to predict whether or not there is a humanitarian agency present in a parrish (`org_present` -- this is our dependent variable). We supply the model our basket of indicators from which it will construct a model to predict our dependent variable -- unhide the code below to see the full model -- but we mostly fed the model the Census indicators. The decision tree printed below is the result: 
+
+```{r tree2}
+# just to show the decision tree of how partners seem to have chosen locations. 
+# using full parr dataset for the tree
+# no doubt there are other factors, but this is the data I have -- 
+# looking at specific partner characteristics would be interesting. 
 set.seed(3000)
 
-
-# number of not covered poor persons 
-tree1 <- parr0 %>%
-  rpart(not_covered_pobre ~ estado + percent_pobre + percent_urbana + 
-        densidad_ppl_km2 + razon_de_dependencia_de_menores_de_15_anos + 
-        razon_de_dependencia_total +  
-        percent_sin_agua_segura + percent_sin_saneamiento_mejorado +
-        percent_sin_servicio_electrico + percent_analfabeto + percent_hogares_jefatura_femenina, 
-        promedio_de_personas_por_vivienda, data = ., cp = 0.038)
-
-# interested again -- just to show the decision tree of how partners seem to have chosen locations. # using full parr dataset for the tree
 tree2 <- parr %>% 
   rpart(org_present ~ percent_pobre + percent_urbana + densidad_ppl_km2 + 
         razon_de_dependencia_de_menores_de_15_anos + razon_de_dependencia_total +  
         percent_sin_agua_segura + percent_sin_saneamiento_mejorado +
         percent_sin_servicio_electrico + percent_analfabeto + percent_hogares_jefatura_femenina, 
         promedio_de_personas_por_vivienda, data = ., minbucket = 100)
+
+fancyRpartPlot(tree2, digits = -3, sub = "", palettes = "Blues", type = 2)
+```
+
+To understand the plot above, all parrishes have been split into four groups (the terminal nodes at the bottom marked **`4`**, **`5`**, **`6`** and **`7`**) based on the percentage of parrishes in each node where humanitarian agencies are present. Each bubble has three figures -- for instance, the root, at the top, and marked [1], shows that on average, 0.524 or 52.4% of all parrishes have humanitarian agencies present in them. The next numbers, "n = 1109" shows that `r nrow(parr)` parrishes are in that group and next to it is the percentage of parrishes it contains, which, since it is the root, is 100%. 
+
+We see that **`7`** (in dark blue) the node with the highest concentration of parrishes with agencies present (82.8%), consists of parrishes more than 79.4% urbanised and denser than 187 ppl/km2. And **`4`**, the node with the lowest concentration of parrishes with agencies (22.6%) is less than 79.4% urbanised _and_ less than 21.8% urbanised. 
+
+Perhaps it is understandable that the most heavily populated parrishes have greater concentrations of organisations, though population density and urban population are both negatively correlated with poverty incidence. And this is, of course, not to imply that this actually depicts partners' decision-making process, just that these are the factors towards which we, as a response, are predisposed. 
+
+The largest determinants of the *number* of beneficiaries reached per parrish are population density and percentage urban, as beneficiary numbers tend to scale in line with larger populations. 
+
+<br>
+
+### 5b. Prioritisation trees
+
+Several trees were built and trialled to split parrishes into targetting groups. As mentioned, the independent variables come from a pool of indicators from the census dataset, with some originating from the 2019 UNICEF Municipal Prioritisation Tool, which was a Principal Components Analysis of key variables related to poverty, health and mortality and violence and insecurity. After numerous iterations, **`tree3`** was chosen and it splits parrishes into groups according to the:  
+
+* The poverty score, which is the a rescaled average of the number of poor persons and the poverty incidence of each parrish. 
+  
+To see the specific variables and formulae used for each of the major iterations, as well as additional notes on the development and application of decision trees, unhide the source code below. 
+
+```{r trees-REF-write-into-parr0}
+ 
+# As opposed to a prioritisation score -- typically the weighted average of several demographic and socioeconomic indicators -- a tree is much better at accounting for the variations across geographic areas. A partner might not have the capacity to work outside of urban areas or another might have specific geographic biases and decision trees are a good tool to make the best possible targetting decisions within one's constraints.  
+
+# With that in mind, tree3 was developed to aid future prioritisation. The independent variable it strives to predict is the poverty score, which, as mentioned, is just the rescaled average of number of poor persons and poverty incidence. The performance of tree3 was considered superior to both tree1 (whose indendepent variable is just the absolute number of poor persons) and tree4 due to its ability clearly distinguish its groups of parrishes and because it is not dependent on gaps data -- meaning it will not shift when the 5Ws are updated.
+
+set.seed(3000)
+
+# number of not covered poor persons 
+tree1 <- parr0 %>%
+  rpart(not_reached ~ estado + percent_pobre + percent_urbana + 
+        densidad_ppl_km2 + razon_de_dependencia_de_menores_de_15_anos + 
+        razon_de_dependencia_total +  
+        percent_sin_agua_segura + percent_sin_saneamiento_mejorado +
+        percent_sin_servicio_electrico + percent_analfabeto + percent_hogares_jefatura_femenina, 
+        promedio_de_personas_por_vivienda, data = ., cp = 0.038)
 
 # tree based on poverty_score
 tree3 <- parr0 %>%
@@ -626,12 +1038,15 @@ tree3 <- parr0 %>%
         promedio_de_personas_por_vivienda, data = ., cp = 0.044)
 
 # tree based on gap score -- let's not use this as tree3 is more stable and will not change based on new 5W data 
-tree4 <- parr0 %>%
-  rpart(gap_score ~ estado + percent_urbana + densidad_ppl_km2 +
-        razon_de_dependencia_de_menores_de_15_anos + razon_de_dependencia_total +  
-        percent_sin_agua_segura + percent_sin_saneamiento_mejorado +
-        percent_sin_servicio_electrico + percent_analfabeto + percent_hogares_jefatura_femenina, 
-        promedio_de_personas_por_vivienda, data = ., cp = 0.045)
+# tree4 <- parr0 %>%
+#   rpart(gap_score ~ estado + percent_urbana + densidad_ppl_km2 +
+#         razon_de_dependencia_de_menores_de_15_anos + razon_de_dependencia_total +  
+#         percent_sin_agua_segura + percent_sin_saneamiento_mejorado +
+#         percent_sin_servicio_electrico + percent_analfabeto + percent_hogares_jefatura_femenina, 
+#         promedio_de_personas_por_vivienda, data = ., cp = 0.045)
+
+# plotcp(tree3)
+# printcp(tree3)
 
 # adding tree1 and tree3 rules to the dataset 
 parr0 <- parr0 %>% 
@@ -646,123 +1061,139 @@ parr0 <- parr0 %>%
       filter(Leaf == TRUE) %>% 
       rename(rule3 = Rule) %>% 
       group_by(rule3) %>% 
-      summarise(subrules3 = paste(Subrule, collapse = ","))) %>% 
-  mutate(rule4 = row.names(tree4$frame)[tree4$where]) %>%
-      left_join(rpart.rules.table(tree4) %>% 
-      filter(Leaf == TRUE) %>% 
-      rename(rule4 = Rule) %>% 
-      group_by(rule4) %>% 
-      summarise(subrules4 = paste(Subrule, collapse = ",")))
+      summarise(subrules3 = paste(Subrule, collapse = ",")))
 
 ```
 
+<br>
 
-```{r}
-fancyRpartPlot(tree3, digits = -3, sub = "", palettes = "Blues", type = 2)
-```
+### 5c. Sub-groups of decision tree3
 
-
-```{r}
-plotcp(tree3)
-```
-
-### Predicting coverage at the parrish level
-
-> The simple model below, tree2, shows which variables best predict whether a parrish has been reached by humanitarian agencies or not This is not to imply that this actually depicts the decision-making process of our partners, just that these are the factors towards which we, as a reponse, are predisposed. 
-
-> To understand the plot below, all parrishes have been split into four groups (the terminal nodes at the bottom marked [4], [5], [6] and [7]) based on the percentage of parrishes in each node where humanitarian agencies are present. Each bubble has three figures -- the one on the top shows the percentage of parishes in each group that has a humanitarian presence: for instance, the root, at the top and marked [1], shows that on average, 0.547 or 54.7% of all parrishes have humanitarian agencies present in them. The next numbers, "n = 1161" show that 1161 parrishes are in that group and the percentage of parrishes in that group. 
-
-```{r tree2-rpartPLOT}
-
-fancyRpartPlot(tree2, digits = -3, sub = "", palettes = "Blues", type = 2)
-```
-
-> We come away with a slightly unfavourable view of our operational footprint. We are most present in parrishes which are both more urban and more dense -- being present in 83% of parrishes which are more than 79% urban and have more than 187 people per km2 (this applies to the 337 parrishes in node [7]). Perhaps it is understandable that the most heavily populated parrishes have greater organisational presence. But it must be mentioned that population density and urban population are both negatively correlated with poverty incidence. In the next section, we 
-
-> The largest determinants of the *number* of beneficiaries reached per parrish are population density and percentage urban, as beneficiary numbers tend to scale in line with larger populations. 
-
-### Characteristics of the population not covered
-
-> Instead of a singular prioritisation score, which is typically the weighted average of several secondary data indicators, a tree is better at taking into account the various priorities and limitations of each partner -- some might not have the capacity to expand outside of urban areas, other have specific geographic biases -- and decision trees are a useful tool to make the best targetting decisions one can within one's constraints. 
-
-> With that in mind, tree3 was developed to aid future prioritisation. The independent variable it strives to predict is the poverty score (unhide code in section xx to see its specific calculation), which, as mentioned, is just the rescaled average of number of poor persons and poverty incidence. Tree3's performance was considered superior to tree1 by the analyst, which just used the absolute number of poor persons as its independent variable, due to its ability to clearly distinguish its groups of parrishes 
-
+Below is a plot of **`tree3`** -- the `r nrow(parr0)` parrishes where the number of beneficiaries does not exceed the number of poor persons (corresponding to the _under_ and _no coverage_ categories) have been split into four terminal nodes: **`4`**, **`5`**, **`6`** and **`7`**. The manner in which they have been split is meaningful for targetting decisions and this section will compare the characteristics of each.
 
 ```{r tree3-rpartPlot}
 
-fancyRpartPlot(tree4, digits = -3, sub = "", palettes = "Blues", type = 2)
+fancyRpartPlot(tree3, digits = -3, sub = "", palettes = "Blues", type = 2)
 ```
+ 
+<br>
+ 
+#### Summary and overview of the terminal nodes of tree3 
 
-```{r tree3-rules}
-# figure out the right order for the leaves
-# I'm liking tree3 more and more
+```{r tree3-rules-TABLE}
   
 parr0 %>% 
   group_by(rule3) %>% 
   summarise(parr_no_ben = n_distinct(pcode3[beneficiarios == 0]),
             beneficiarios = sum(beneficiarios),
-            ben_per_parr = sum(beneficiarios) / n(), 
-            not_covered = sum(not_covered_pobre),
-            nc_per_parr = sum(not_covered_pobre) / n(),
+            avg_beneficiarios = sum(beneficiarios) / n(), 
+            not_reached = sum(not_reached),
+            avg_not_reached = sum(not_reached) / n(),
             avg_org_count = mean(org_count),
             avg_poblacion = mean(poblacion_2019),
-            coverage_percent = sum(beneficiarios) / sum(poblacion_2019),
-            percent_pobre = sum(pob_pobre) / sum(poblacion_2019),
-            percent_urbana = sum(pob_urbana) / sum(poblacion_2019),
+            percent_pobre = round(sum(pob_pobre) / sum(poblacion_2019), digits = 2),
+            percent_urbana = round(sum(pob_urbana) / sum(poblacion_2019), digits = 2),
             densidad_ppl_km2 = sum(poblacion_2019) / sum(area_km2, na.rm = TRUE),
-            parroquias = n(),
-            municipios = n_distinct(pcode2),
-            parr_per_mun = n() / n_distinct(pcode2)) %>% 
-  gather(key = var_name, value = value, 2:ncol(.)) %>% 
+            parroquias = n()) %>% 
+  gather(key = variable, value = value, 2:ncol(.)) %>% 
   spread_(key = names(.)[1], value = 'value') %>% 
-  arrange(factor(var_name, levels = c("not_covered", "nc_per_parr", "avg_poblacion", 
+  # reordering the table instead of having it be alphabetical
+  arrange(factor(variable, levels = c("not_reached", "avg_not_reached", "avg_poblacion", 
                                       "beneficiarios",
-                                      "ben_per_parr",  "avg_org_count", 
-                                      "coverage_percent",
+                                      "avg_beneficiarios",  "avg_org_count",
                                       "percent_pobre", "percent_urbana", "densidad_ppl_km2", 
-                                      "parroquias", "parr_no_ben", "municipios", 
-                                      "parr_per_mun"))) %>%  
+                                      "parroquias", "parr_no_ben"))) %>%  
   
   pander(big.mark = ",")
 
+```
 
-# 4 is population centres which are easy to reach, but with only 24% of the population being poor, 
-# careful targetting and beneficiary selection is required. 
-# 5 is probably the best option for expansion -- it has the highest concentration of poor persons not covered per parrish, is substantially poorer than A (with a 40% poverty incidence, making targetting of vulnerable persons much easier). Additionally, the parrishes within this group are still very urbanised (91%)
-# C is probably the best option for expansion -- it has the highest concentration of unconvered 
-# persons per parroquia and municipio, is substantially poorer than A (at 43% poverty incidence). 
-# Operational expansion is more likely, due to the higher concentration of organisations and 
-# it is also fairly urban, meaning that this uncovereved population is fairly easy to reach. 
-# better than B in almost every way -- higher concentration of NC, less area to cover and 
-# it's already got higher operational coverage, so that makes; 
-# in fact, B should be prioritised here -- it's easy to 
-# in many ways, D is better than C as well
-# E is just a giant operational challenge
+* **`4`** consists of population centres which are easy to reach, but with only 21.8% of the population being poor, careful targetting and beneficiary selection is required -- blanket coverage will only result in excessive inclusion errors. It also has the highest average number of organisations present per parrish (avg_org_count). There are `r filter(parr0, rule3 == "4") %>% nrow()` parrishes in this group. These parrishes should not be prioritised -- resources should be allocated elsewhere. 
+
+* **`5`** is probably the best option for expansion for most partners -- it has the highest concentration of poor persons not covered per parrish (nc_per_parr), is substantially poorer than **`4`**, with a poverty incidence of 38%. Additionally, these parrishes are still very urbanised (92.5%), meaning that access to these populations will not be challenging. The coverage of organisations is still fairly high and partners should consider expanding into parrishes to the ones they currently cover. This is the largest group, with `r filter(parr0, rule3 == "5") %>% nrow()` parrishes. 
+
+* **`6`** is where access starts to get more challenging -- though these parrishes have an average poverty incidence of 52%, the rate of urbanisation drops to 75% and the population density is only 18 ppl/km2. But there are still more poor persons not covered per parrish in this group than in **`4`**. There are `r filter(parr0, rule3 == "6") %>% nrow()` parrishes in this group. 
+
+* **`7`** consists of the poorest, most vulnerable and most remote parrishes. Working in these areas will incur significant operational and logistical costs. However, with an average poverty incidence of 75.2%, blanket coverage will be warranted in many cases -- if the challenge of reaching all of the population can be met. Additionally, they also have the lowest average number of poor persons not covered, given their extremely low population density of 1.8 ppl/km2. Humanitarian agencies have the lowest presence in these parrishes. It is advisable for donors to incentivise activities in these areas as it is clear that humanitarian agencies are avoiding them. There are `r filter(parr0, rule3 == "7") %>% nrow()` parrishes in this group.
+
+<br>
+
+### 5d. Maps of parrishes by decision tree node
+
+```{r tree-3-MAP-org-present}
+# just one note for this map -- I still can't figure out how to get the tooltip to appear when
+# you're hovering over the centroid instead of at the border; hoveron fill doesn't work. 
+# I think you should just ask stackoverflow GIS
+
+# hex for Set2 "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#FFFFFF"
+# hex for Dark2 "#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#FFFFFF"
+# hex for Accent "#7FC97F", "#BEAED4", "#FDC086", "#FFFF99", "#FFFFFF"
+# scale_fill_viridis_d()
+# scale_fill_manual(values = c())
+
+parrmap_org <- parr %>% 
+  left_join(parr0 %>% 
+              select(pcode3, rule3), by = "pcode3") %>% 
+  right_join(pcode3_shape, by = "pcode3") %>% 
+  st_as_sf() %>% 
+  mutate(not_reached = round(not_reached, digits = 0),
+         tree_node = rule3) %>% 
+  mutate_at(vars(percent_pobre, percent_urbana), ~(round(., digits = 2))) %>% 
+  ggplot() +
+  geom_sf(size = 0.1, 
+          aes(fill = tree_node,
+              text = paste0(parroquia,",", "\n", 
+                           municipio, ",", "\n",
+                           estado, "\n", 
+                           "not covered: ", not_reached, "\n",
+                           "poverty incidence: ", percent_pobre, "\n",
+                           "percent urban: ", percent_urbana, "\n",
+                           "org present :", org_present),
+             alpha = org_present)) +
+  theme_void() +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3")) +
+  scale_alpha_discrete(range = c(1, 0.7)) +
+  theme(legend.title = element_text(size = 7),
+        legend.text = element_text(size = 7),
+        plot.title = element_text(size = 11)) +
+  guides(alpha = FALSE) +
+  labs(fill = "Tree node",
+       alpha = "") +
+  ggtitle('Map of parrishes by decision tree node (colour) & if organisations present (alpha)')
+  
+ggplotly(parrmap_org, tooltip = c("text", "fill")) %>%
+  layout(title = list(text = paste0(
+    "Map of parrishes by decision tree node (colour) & if organisations present (alpha)",
+                                    "<br>",
+                                    "<sup>",
+                                     "mouse over for details; drag and click to select and zoom; double-click legend select/deselect","</sup>")))
+
 
 ```
 
-> Unhide for tree1 notes -- move this to appendix
+Above is a map of parrishes by their decision tree node (denoted by colour), we have also decreased the alpha for parrishes where there are already organisations present, meaning that they appear more transparent. Looking at **`4`** and **`5`**, we can see the parrishes that conform to the the Venezuela Costal Range and the Venezuelan Andes, where most of the country's population is concentrated; as a reminder, parrishes in node **`5`** are excellent candidates for expansion. 
 
-```{r tree1-notes}
+We also see three large clusters of parrishes from node **`7`** -- the poorest and most-sparsely populated areas -- in Amazonas and Bolivar (at the bottom of the map), in Delta Amacuro (at the extreme right) and in Lara and Falcon (top-left). 
+
+* Additional notes on tree1, which was not selected -- unhide code to see
+
+```{r tree1-notes, results=FALSE}
 # the main problem I see is that each of the leaves has little variance in terms of poverty incidence
-# 
+# but let me know if you want maps or products focused on this tree, it's pretty easy to do. [15] is very, very attractive. Maybe I can 
 
-# V is dense, urban and highest operational presence, shortly followed by W
-# Z is a priority for reaching the most vulnerable and marginalised, 
-# but it truly is very sparsely populated. The number of persons you can reach is low and 
-# this is the most operationally challenging
-# Y is more than 50% poor, but also sparsely populated; but it has more not_covered than X,  with double the number of not_covered per pcode3, it also has less than half the 
-# municipalities -- operationally more feasible to move into this area
-# X is spread out, numerous and you should expand there only if you have operations in adjacent areas
+# 6 is dense, urban and highest operational presence,
+# 2 is just too big. 800 parrishes is just too many. The low end is distinguished much better in tree3
+# 14 is just rich, urban and not a priority. It's also a really small leaf.  
+# 15 is actually a really good leaf -- really high nc_per_parr, few parrishes, very dense, very urban and 42% poor and such an immensely low coverage percent. Good low-hanging fruit. I almost want to keep tree1 just because of this leaf. Maybe I will make one map just for this. 59,508 nc_per_parr is massive. 
 
 parr0 %>% 
   group_by(rule1) %>% 
   summarise(parr_no_ben = n_distinct(pcode3[beneficiarios == 0]), 
             beneficiarios = sum(beneficiarios),
             ben_per_parr = sum(beneficiarios) / n(), 
-            not_covered = sum(not_covered_pobre),
-            nc_per_parr = sum(not_covered_pobre) / n(),
-            nc_per_mun = sum(not_covered_pobre) / n_distinct(pcode2), 
+            not_reached = sum(not_reached),
+            nr_per_parr = sum(not_reached) / n(),
+            nc_per_mun = sum(not_reached) / n_distinct(pcode2), 
             avg_org_count = mean(org_count),
             coverage_percent = sum(beneficiarios) / sum(poblacion_2019),
             percent_pobre = sum(pob_pobre) / sum(poblacion_2019),
@@ -771,9 +1202,9 @@ parr0 %>%
             parroquias = n(),
             municipios = n_distinct(pcode2),
             parr_per_mun = n() / n_distinct(pcode2)) %>% 
-  gather(key = var_name, value = value, 2:ncol(.)) %>% 
+  gather(key = variable, value = value, 2:ncol(.)) %>% 
   spread_(key = names(.)[1], value = 'value') %>% 
-  arrange(factor(var_name, levels = c("not_covered", "nc_per_parr", "nc_per_mun", "beneficiarios",
+  arrange(factor(variable, levels = c("not_reached", "nr_per_parr", "nc_per_mun", "beneficiarios",
                                       "ben_per_parr",  "avg_org_count", "coverage_percent",
                                       "percent_pobre", "percent_urbana", "densidad_ppl_km2", 
                                       "parroquias", "parr_no_ben", "municipios", 
@@ -782,38 +1213,38 @@ parr0 %>%
 ```
 
 
-```{r}
-pcode3_shape <- st_read("C:/Users/Sean Ng/Documents/R/coverage_gaps_venezuela/ven_admbnda_adm3_20180502/ven_admbnda_adm3_20180502.shp",
-                        quiet = TRUE) %>% 
-  rename(pcode1 = ADM1_PCODE,
-         pcode2 = ADM2_PCODE,
-         pcode3 = ADM3_PCODE)
-
-```
-
 <br><br>
 
 
-```{r}
-unique(parr$estado)
-```
-
-
-```{r}
-parr0 %>% filter(percent_pobre >= 0.697) %>% 
-  summarise(parroquias_ben = length(pcode3[beneficiarios > 0]),
-            parrooquias = n())
-```
 
 
 
+## 6. Reference Table 
+_type or use slider to filter by categories or values_
 
 ```{r}
-# for showing the output of the tree nicely
-print(tree3)
-
-printcp(tree3)
+parr0 %>%
+  select(-percent_total_ben) %>% 
+  mutate(sector_count = rowSums(select(., ends_with("_ben"))!=0)) %>% 
+  mutate(educacion_only = ifelse(educacion_ben > 0, "educacion", ""),
+         nutricion_only = ifelse(nutricion_ben > 0, "nutricion", ""),
+         salud_only = ifelse(salud_ben > 0, "salud",  ""),
+         wash_only = ifelse(wash_ben > 0, "wash", ""),
+         proteccion_only = ifelse(proteccion_ben > 0, "proteccion", ""),
+         sectors_present = str_trim(paste0(educacion_only, " ", nutricion_only, " ", proteccion_only, " ", 
+                                  salud_only, " ", wash_only))) %>% 
+  mutate_at(vars(pob_pobre, not_reached, org_count), ~(round(., digits = 0))) %>% 
+  mutate_at(vars(percent_pobre, percent_urbana), ~(round(., digits = 2))) %>% 
+  select(estado, municipio, parroquia,  
+         percent_pobre, percent_urbana, not_reached, beneficiarios, tree_node = rule3,
+         org_count, sector_count, sectors_present, pcode3) %>% 
+  arrange(desc(not_reached)) %>% 
+  # the js is adjusting the font size for the whole container -- there doesn't seem to be another way
+  datatable(filter = "top", options = list(pageLength = 10, scrollX = TRUE,
+                                           initComplete = htmlwidgets::JS(
+          "function(settings, json) {",
+          paste0("$(this.api().table().container()).css({'font-size': '", "8.5pt", "'});"),
+          "}")
+       ) 
+     ) 
 ```
-> Tree1 splits parroquias by
-
-

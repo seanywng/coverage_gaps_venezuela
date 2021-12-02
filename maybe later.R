@@ -470,3 +470,514 @@ ggplotly(sector_plot, tooltip = c("y", "x", "text", "colour")) %>%
 ```
 _x-axis: number of poor persons; y-axis: poverty incidence; size: number of poor persons not covered; colour: number of sectors_
 _mouse over for details_
+
+# options for act_ben joining for beneficiary frequencies 
+mutate(sector2 = ifelse(categoriadeactividad == "Vacunacion", "Vacunacion", sector)) %>% 
+  
+  act_ben %>% 
+  filter(categoriadeactividad != "Vacunacion") %>% 
+  group_by(ubicacion, desagregacion, sector) %>% 
+  slice(which.max(beneficiarios)) %>% 
+  ungroup() %>% 
+  group_by(ubicacion, sector, pcode3) %>% 
+  pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
+  replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
+                  Seguridad_Alimentaria = 0, Proteccion_NNA = 0,
+                  Proteccion_General = 0, Proteccion_GBV = 0)) %>%
+  group_by(pcode3) %>% 
+  summarise(nutricion_ben = sum(Nutricion),
+            proteccion_ben = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
+            wash_ben = sum(WASH),
+            salud_ben = sum(Salud),
+            educacion_ben = sum(Educacion),
+            seguridad_alimentaria_ben = sum(Seguridad_Alimentaria)) %>% 
+  mutate(sector_count = rowSums(select(., -pcode3)!=0), 
+         ben_freq = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
+           educacion_ben + seguridad_alimentaria_ben,
+         ben_max = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
+                        educacion_ben, seguridad_alimentaria_ben),
+         ms_max_ben = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max))) %>%
+  
+  ```{r}
+act_ben %>%
+  # vaccination not filtered out  
+  # filter(categoriadeactividad != "Vacunacion") %>% 
+  group_by(ubicacion, desagregacion, sector) %>% 
+  slice(which.max(beneficiarios)) %>% 
+  ungroup() %>%
+  group_by(ubicacion, sector, pcode3) %>% 
+  pivot_wider(names_from = sector, values_from = beneficiarios) %>% 
+  replace_na(list(Nutricion = 0, Educacion = 0, WASH = 0, Salud = 0,
+                  Seguridad_Alimentaria = 0, Proteccion_NNA = 0,
+                  Proteccion_General = 0, Proteccion_GBV = 0)) %>%
+  group_by(pcode3, desagregacion) %>% 
+  summarise(nutricion_ben   = sum(Nutricion),
+            proteccion_ben  = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
+            wash_ben        = sum(WASH),
+            salud_ben       = sum(Salud),
+            educacion_ben   = sum(Educacion),
+            sa_ben          = sum(Seguridad_Alimentaria)) %>% 
+  mutate(ben_freq   = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
+           educacion_ben + sa_ben,
+         ben_max    = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
+                           educacion_ben, sa_ben),
+         ms_ben_max = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max)) %>% 
+  group_by(pcode3) %>% 
+  summarise(nutricion_ben  = sum(nutricion_ben),
+            proteccion_ben = sum(proteccion_ben),
+            wash_ben       = sum(wash_ben),
+            salud_ben      = sum(salud_ben),
+            educacion_ben  = sum(educacion_ben),
+            sa_ben         = sum(sa_ben),
+            ben_freq   = sum(ben_freq),
+            ben_max    = sum(ben_max),
+            ms_ben_max = sum(ms_ben_max)) %>% 
+  mutate(sector_count = rowSums(select(., ends_with("_ben")) != 0)) 
+
+
+ungroup() %>% 
+  summarise(ms_ben_max = sum(ms_ben_max),
+            ben_freq = sum(ben_freq),
+            multisector_percent = sum(ms_ben_max) / sum(ben_freq))
+
+
+# I think you have to summarise by pcode3 and disaggregation, 
+# calculate the frequencies and ben_max,
+# then only do you group by pcode3 and do the sector count
+group_by(pcode3) %>% 
+  summarise(nutricion_ben = sum(Nutricion),
+            proteccion_ben = sum(Proteccion_NNA + Proteccion_General + Proteccion_GBV),
+            wash_ben = sum(WASH),
+            salud_ben = sum(Salud),
+            educacion_ben = sum(Educacion),
+            seguridad_alimentaria_ben = sum(Seguridad_Alimentaria)) %>% 
+  mutate(sector_count = rowSums(select(., -pcode3)!=0), 
+         ben_freq = nutricion_ben + proteccion_ben + wash_ben + salud_ben + 
+           educacion_ben + seguridad_alimentaria_ben,
+         ben_max = pmax(nutricion_ben, proteccion_ben, wash_ben, salud_ben, 
+                        educacion_ben, seguridad_alimentaria_ben),
+         ms_max_ben = ifelse(ben_max >= ben_freq - ben_max, ben_freq - ben_max, ben_max))
+
+
+act_ben %>% 
+  mutate(sector2 = ifelse(categoriadeactividad == "Vacunacion", "Vacunacion", sector)) %>% 
+  group_by(sector2) %>% 
+  summarise(beneficiarios = sum(beneficiarios))
+```
+# multisector barplot -- decided to do scatterplot instead
+
+```{r}
+
+parr0 %>% 
+  group_by(estado) %>% 
+  summarise(multisector_percent = sum(ms_ben_max) / sum(ben_freq)) %>% 
+  arrange(desc(multisector_percent)) %>% 
+  select(estado) %>% as.list(as.data.frame(t(.)))
+
+state2_ord <- c("AMAZONAS", "BOLIVAR", "MIRANDA", "COJEDES", "ANZOATEGUI", "TACHIRA", "DELTA AMACURO",
+                "ZULIA", "APURE", "DISTRITO CAPITAL", "GUARICO", "PORTUGUESA", "LARA", "MONAGAS", 
+                "VARGAS","MERIDA", "SUCRE","YARACUY", "FALCON", "BARINAS", "ARAGUA", "CARABOBO", 
+                "NUEVA ESPARTA", "TRUJILLO")
+
+ms_state <- parr0 %>% 
+  group_by(estado) %>% 
+  summarise(multi_sector_ben = sum(ms_ben_max),
+            one_sector_ben = sum(ben_freq) - sum(ms_ben_max),
+            ben_freq = sum(ben_freq)) %>% 
+  pivot_longer(multi_sector_ben:one_sector_ben, names_to = "ben_type", values_to = "ben_freqs") %>%
+  mutate(multisector_percent = round(ben_freqs / ben_freq * 100), digits = 2) %>% 
+  ggplot(aes(x = estado, y = multisector_percent, fill = ben_type)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  geom_text(aes(x = estado, y = multisector_percent / 1.3, 
+                label = comma(ben_freqs, accuracy = 1), 
+                group = ben_type), size = 1.5) +
+  scale_x_discrete(limits = state2_ord) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5),
+        axis.text.y = element_text(size = 5),
+        axis.title.y = element_text(size = 8)) +
+  xlab("") + ylab("Percentage of multi-sector beneficiaries") + labs(fill = "") +
+  scale_y_continuous(labels = comma)
+
+ggplotly(ms_state) %>% 
+  layout(legend = list(font = list(size = 6))) %>% 
+  config(displayModeBar = FALSE)
+
+```
+
+# you were checking shapefile and census conflicts 
+
+pcode3_shape %>% st_drop_geometry() %>% 
+  select(pcode1,pcode2, pcode3) %>% distinct() %>% 
+  write_csv(file = "shape_pcodes.csv")
+
+parr %>% select(pcode1, pcode2, pcode3) %>% write_csv(file = "parr_pcodes.csv")
+
+# does not work
+style(hoverlabel = label, hoveron = "fill") 
+
+# Dark2 -- we're using viridis instead
+scale_fill_manual(values = c("#1B9E77", "#D95F02","#7570B3","#E7298A", "#FFFFFF"))
+
+# shelving this -- i think we just need the parrmap of organisations
+parrmap_nr <- parr %>% 
+  left_join(parr0 %>% 
+              select(pcode3, rule3), by = "pcode3") %>% 
+  right_join(pcode3_shape, by = "pcode3") %>% 
+  st_as_sf() %>% 
+  mutate(not_reached = round(not_reached, digits = 0),
+         tree_node = rule3, 
+         med_nc = case_when(not_reached >= 5270 ~ "above_median",
+                            not_reached < 5270 ~ "below_median")) %>% 
+  mutate_at(vars(percent_pobre, percent_urbana), ~(round(., digits = 2))) %>% 
+  ggplot() +
+  geom_sf(size = 0.1, 
+          aes(fill = tree_node,
+              text = paste0(parroquia,",", "\n", 
+                            municipio, ",", "\n",
+                            estado, "\n", 
+                            "not covered: ", not_reached, "\n",
+                            "poverty incidence: ", percent_pobre, "\n",
+                            "percent urban: ", percent_urbana, "\n",
+                            "org present :", org_present),
+              alpha = med_nc)) +
+  theme_void() +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3")) +
+  scale_alpha_discrete(range = c(1, 0.7)) +
+  theme(legend.title = element_text(size = 7),
+        legend.text = element_text(size = 7),
+        plot.title = element_text(size = 9)) +
+  guides(alpha = FALSE) +
+  labs(fill = "Tree node",
+       alpha = "",
+       title = "") +
+  ggtitle('Map of parrishes by decision tree node (colour) & poor persons not reached (alpha)')
+
+ggplotly(parrmap_nr, tooltip = c("text", "fill")) %>%
+  layout(title = list(text = paste0('Map of parrishes by decision tree node (colour) & poor persons not reached (alpha)',
+                                    '<br>',
+                                    '<sup>',
+                                    'mouse over for details; drag and click to select and zoom; double-click legend select/deselect','</sup>')))
+
+# to see matching combinations 
+unique(act_ben[c("actividad_codigo", "actividad_desc")]) %>% 
+  arrange(actividad_codigo)
+
+# you have a better option for cluster combinations already
+```{r}
+
+cluster_comb <- parr %>% 
+  filter(beneficiarios != 0) %>% 
+  mutate(edu_nut = ifelse(educacion_ben > 0 & nutricion_ben > 0, 1, 0),
+         edu_sal = ifelse(educacion_ben > 0 & salud_ben > 0, 1, 0),
+         edu_wash = ifelse(educacion_ben > 0 & wash_ben > 0, 1, 0),
+         edu_prot = ifelse(educacion_ben > 0 & proteccion_ben > 0, 1, 0), 
+         nut_sal = ifelse(nutricion_ben > 0 & salud_ben > 0, 1, 0),
+         nut_wash = ifelse(nutricion_ben > 0 & wash_ben > 0, 1, 0), 
+         nut_prot = ifelse(nutricion_ben > 0 & proteccion_ben > 0, 1, 0),
+         sal_wash = ifelse(wash_ben > 0 & salud_ben > 0, 1, 0),
+         sal_prot = ifelse(proteccion_ben > 0 & salud_ben > 0, 1, 0),
+         wash_prot = ifelse(wash_ben > 0 & proteccion_ben > 0, 1, 0),
+         edu_only = ifelse(educacion_ben == ben_freq, 1, 0),
+         nut_only = ifelse(nutricion_ben == ben_freq, 1, 0),
+         sal_only = ifelse(salud_ben == ben_freq, 1, 0),
+         wash_only = ifelse(wash_ben == ben_freq, 1, 0),
+         prot_only = ifelse(proteccion_ben == ben_freq, 1, 0)) %>%
+  summarise(across(c(edu_nut, edu_sal, edu_wash, edu_prot, nut_sal, nut_wash, nut_prot, sal_wash, 
+                     sal_prot, wash_prot, edu_only, nut_only, sal_only, wash_only, prot_only), sum)) %>%
+  pivot_longer(names_to = "combinations", values_to = "count", 1:ncol(.)) %>% 
+  arrange(desc(count))
+
+kable(list(cluster_comb %>% head(8), cluster_comb %>% tail(7)), 
+      caption = "Cluster combinations by count of parrishes", 
+      "html", table.attr = "style = 'width:50%;'") %>% 
+  kable_styling(font_size = 15, bootstrap_options = "hover")
+
+```
+
+edu_all_freq = ifelse(educacion_ben > 0, ben_freq, 0),
+nut_all_freq = ifelse(nutricion_ben > 0, ben_freq, 0),
+sal_all_freq = ifelse(salud_ben > 0, ben_freq, 0),
+wash_all_freq = ifelse(wash_ben > 0, ben_freq, 0),
+prot_all_freq = ifelse(proteccion_ben > 0, ben_freq, 0)
+
+# maybe not the best idea to have one giant table
+# summary table of cluster combinations 
+# rbind so they are all together in the same pander table
+rbind(
+  clust_com %>% 
+    filter(cluster == "educacion" & clust_freq != 0) %>% 
+    group_by(combination) %>% 
+    summarise(parrishes = n(),
+              clust_freq = sum(clust_freq),
+              pair_freq = sum(pair_freq)) %>% 
+    mutate(`%_subtotal` = round(clust_freq / sum(clust_freq) * 100, digits = 1),
+           `%_ms_max` = round(pmin(clust_freq, abs(clust_freq - pair_freq)) / pair_freq * 100, digits = 1),
+           `%_ms_max` = ifelse(is.infinite(`%_ms_max`), 0, `%_ms_max`),
+           `%_parrishes` = round(parrishes / sum(parrishes) * 100, digits =1)) %>% 
+    relocate(`%_subtotal`, .after = clust_freq) %>%
+    relocate(`%_parrishes`, .after = parrishes) %>% 
+    rbind(NA), 
+  
+  clust_com %>% 
+    filter(cluster == "nutricion" & clust_freq != 0) %>% 
+    group_by(combination) %>% 
+    summarise(parrishes = n(),
+              clust_freq = sum(clust_freq),
+              pair_freq = sum(pair_freq)) %>% 
+    mutate(`%_subtotal` = round(clust_freq / sum(clust_freq) * 100, digits = 1),
+           `%_ms_max` = round(pmin(clust_freq, abs(clust_freq - pair_freq)) / pair_freq * 100, digits = 1),
+           `%_ms_max` = ifelse(is.infinite(`%_ms_max`), 0, `%_ms_max`),
+           `%_parrishes` = round(parrishes / sum(parrishes) * 100, digits =1)) %>% 
+    relocate(`%_subtotal`, .after = clust_freq) %>%
+    relocate(`%_parrishes`, .after = parrishes) %>% 
+    rbind(NA),
+  
+  clust_com %>% 
+    filter(cluster == "salud" & clust_freq != 0) %>% 
+    group_by(combination) %>% 
+    summarise(parrishes = n(),
+              clust_freq = sum(clust_freq),
+              pair_freq = sum(pair_freq)) %>% 
+    mutate(`%_subtotal` = round(clust_freq / sum(clust_freq) * 100, digits = 1),
+           `%_ms_max` = round(pmin(clust_freq, abs(clust_freq - pair_freq)) / pair_freq * 100, digits = 1),
+           `%_ms_max` = ifelse(is.infinite(`%_ms_max`), 0, `%_ms_max`),
+           `%_parrishes` = round(parrishes / sum(parrishes) * 100, digits =1)) %>% 
+    relocate(`%_subtotal`, .after = clust_freq) %>%
+    relocate(`%_parrishes`, .after = parrishes) %>% 
+    rbind(NA),
+  
+  clust_com %>% 
+    filter(cluster == "wash" & clust_freq != 0) %>% 
+    group_by(combination) %>% 
+    summarise(parrishes = n(),
+              clust_freq = sum(clust_freq),
+              pair_freq = sum(pair_freq)) %>% 
+    mutate(`%_subtotal` = round(clust_freq / sum(clust_freq) * 100, digits = 1),
+           `%_ms_max` = round(pmin(clust_freq, abs(clust_freq - pair_freq)) / pair_freq * 100, digits = 1),
+           `%_ms_max` = ifelse(is.infinite(`%_ms_max`), 0, `%_ms_max`),
+           `%_parrishes` = round(parrishes / sum(parrishes) * 100, digits =1)) %>% 
+    relocate(`%_subtotal`, .after = clust_freq) %>%
+    relocate(`%_parrishes`, .after = parrishes) %>% 
+    rbind(NA),
+  
+  clust_com %>% 
+    filter(cluster == "proteccion" & clust_freq != 0) %>% 
+    group_by(combination) %>% 
+    summarise(parrishes = n(),
+              clust_freq = sum(clust_freq),
+              pair_freq = sum(pair_freq)) %>% 
+    mutate(`%_subtotal` = round(clust_freq / sum(clust_freq) * 100, digits = 1),
+           `%_ms_max` = round(pmin(clust_freq, abs(clust_freq - pair_freq)) / pair_freq * 100, digits = 1),
+           `%_ms_max` = ifelse(is.infinite(`%_ms_max`), 0, `%_ms_max`),
+           `%_parrishes` = round(parrishes / sum(parrishes) * 100, digits =1)) %>% 
+    relocate(`%_subtotal`, .after = clust_freq) %>%
+    relocate(`%_parrishes`, .after = parrishes)
+  
+) %>% 
+  
+  pander(caption = "Cluster combinations", big.mark = ",", style = "rmarkdown", 
+         justify = c("left", "right", "right", "right", "right", "right", "right"), missing = "")
+
+# the start of many, many, many failed attempts at category combinations
+
+# this particular example collapses the values into a list vector -- very useful, 
+# but I don't really know how to use it yet
+```{r}
+cat_list <- act_ben %>% 
+  filter(categoria != "VACUNACION") %>% 
+  select(pcode3, categoria) %>% 
+  summarise_all(list) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "var",
+               values_to = "vector")
+
+expand(cat_list, 
+       nesting(categoria, pcode3),
+       nesting(var2 = var, pcode3_2 = pcode3))
+
+
+act_ben %>%
+  filter(categoria != "VACUNACION") %>% 
+  select(pcode3, categoria) %>% 
+  mutate(pcode3 = parse_number(pcode3)) %>% 
+  pivot_wider(names_from = categoria, values_from = pcode3) %>%
+  summarise_all(list) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "var",
+               values_to = "vector") %>% 
+  expand(nesting(var, vector),
+         nesting(var2 = var, vector2 = vector)) %>% 
+  filter(var != var2) %>% 
+  arrange(var, var2) %>% 
+  mutate(vars = paste0(var, ".", var2)) %>% 
+  select(contains("var"), everything())
+```
+
+# it's not that this one doesn't work, but the way the combinations work is not good 
+# this is the dataset that made me realise that pairwise calculations were much better
+
+```{r}
+cat <- act_ben %>% 
+  filter(categoria != "VACUNACION" & categoria != "OTRO") %>% 
+  group_by(pcode3, categoria) %>% 
+  summarise(beneficiarios = sum(beneficiarios)) %>% 
+  pivot_wider(names_from = categoria, values_from = beneficiarios) %>%
+  replace(is.na(.), 0) %>% 
+  group_by(pcode3) %>% 
+  summarise(across(everything(), ~ sum(., is.na(.), 0))) %>% 
+  mutate(PREVENCION_DESNUTRICION_AGUDA = ifelse(PREVENCION_DESNUTRICION_AGUDA != 0,
+                                                "PREVENCION_DESNUTRICION_AGUDA", NA_character_),
+         CAPACITACIONES_PROTECCION = ifelse(CAPACITACIONES_PROTECCION != 0,
+                                            "CAPACITACIONES_PROTECCION",NA_character_),
+         TRATAMIENTO_DESNUTRICION_AGUDA = ifelse(TRATAMIENTO_DESNUTRICION_AGUDA != 0,
+                                                 "TRATAMIENTO_DESNUTRICION_AGUDA", NA_character_),
+         ASISTENCIA_ALIMENTARIA = ifelse(ASISTENCIA_ALIMENTARIA != 0, 
+                                         "ASISTENCIA_ALIMENTARIA", NA_character_),
+         RESILENCIA_EDUCACION = ifelse(RESILENCIA_EDUCACION != 0, "RESILENCIA_EDUCACION", NA_character_),
+         FORTALECIMIENTO_INSTITUCIONAL = ifelse(FORTALECIMIENTO_INSTITUCIONAL != 0,
+                                                "FORTALECIMIENTO_INSTITUCIONAL", NA_character_),
+         WASH_EN_EDUCACION = ifelse(WASH_EN_EDUCACION != 0, 
+                                    "WASH_EN_EDUCACION", NA_character_), 
+         SEGURIDAD_ALIM_INSTITUCIONAL = ifelse(SEGURIDAD_ALIM_INSTITUCIONAL != 0,
+                                               "SEGURIDAD_ALIM_INSTITUCIONAL", NA_character_),
+         VIH = ifelse(VIH != 0, "VIH", NA_character_),
+         SALUD_POBLACIONAL = ifelse(SALUD_POBLACIONAL != 0, 
+                                    "SALUD_POBLACIONAL", NA_character_),
+         PROVISION_DE_SERVICIO = ifelse(PROVISION_DE_SERVICIO != 0,
+                                        "PROVISION_DE_SERVICIO_PG", NA_character_),
+         INCIDENCIA_CON_AUTORIDADES = ifelse(INCIDENCIA_CON_AUTORIDADES != 0,
+                                             "INCIDENCIA_CON_AUTORIDADES_PG", NA_character_),
+         COMUNIDADES_SALUD = ifelse(COMUNIDADES_SALUD != 0, 
+                                    "COMUNIDADES_SALUD", NA_character_),
+         RED_INTEGRADA_SALUD = ifelse(RED_INTEGRADA_SALUD != 0, 
+                                      "RED_INTEGRADA_SALUD", NA_character_),
+         INFORMACION_RIESGOS = ifelse(INFORMACION_RIESGOS != 0, 
+                                      "INFORMACION_RIESGOS_PG", NA_character_),
+         PROVISION_DE_SERVICIOS = ifelse(PROVISION_DE_SERVICIOS != 0,
+                                         "PROVISION_DE_SERVICIOS_PN", NA_character_),
+         PROMOCION_HIGIENE = ifelse(PROMOCION_HIGIENE != 0, 
+                                    "PROMOCION_HIGIENE", NA_character_),
+         AGUA_EN_COMUNIDADES = ifelse(AGUA_EN_COMUNIDADES != 0, "AGUA_EN_COMUNIDADES", NA_character_),
+         WASH_EN_SALUD_NUTRICION = ifelse(WASH_EN_SALUD_NUTRICION != 0, 
+                                          "WASH_EN_SALUD_NUTRICION", NA_character_),
+         FORTALECIMIENTO_CAPACIDAD_EDUCACION = ifelse(FORTALECIMIENTO_CAPACIDAD_EDUCACION != 0,
+                                                      "FORTALECIMIENTO_CAPACIDAD_EDUCACION", NA_character_),
+         ACCESO_PERMANENCIA_ESCOLAR = ifelse(ACCESO_PERMANENCIA_ESCOLAR != 0, 
+                                             "ACCESO_PERMANENCIA_ESCOLAR", NA_character_),
+         SALUD_MATERNA_INFANTIL = ifelse(SALUD_MATERNA_INFANTIL != 0, 
+                                         "SALUD_MATERNA_INFANTIL", NA_character_),
+         SUMINISTROS_MEDICAMENTOS_BASICOS = ifelse(SUMINISTROS_MEDICAMENTOS_BASICOS != 0, 
+                                                   "SUMINISTROS_MEDICAMENTOS_BASICOS", NA_character_),
+         SANEAMIENTO = ifelse(SANEAMIENTO != 0, 
+                              "SANEAMIENTO", NA_character_),
+         RED_DE_PROTECCION = ifelse(RED_DE_PROTECCION != 0, "RED_DE_PROTECCION", NA_character_),
+         CAPACITACIONES_NUTRICION = ifelse(CAPACITACIONES_NUTRICION != 0, 
+                                           "CAPACITACIONES_NUTRICION", NA_character_),
+         ESTABLECIMIENTOS_SALUD = ifelse(ESTABLECIMIENTOS_SALUD != 0, 
+                                         "ESTABLECIMIENTOS_SALUD", NA_character_))
+
+names(cat) <- make.names(names(cat))
+
+cat <- cat %>% 
+  group_by(.dots = names(cat)) %>% 
+  summarise(count = n())
+
+cat$categories <- apply(cat[, c("ACCESO_PERMANENCIA_ESCOLAR", "FORTALECIMIENTO_CAPACIDAD_EDUCACION", 
+                                "PREVENCION_DESNUTRICION_AGUDA", "PROMOCION_HIGIENE", "PROVISION_DE_SERVICIOS",
+                                "RESILENCIA_EDUCACION", "WASH_EN_SALUD_NUTRICION", "AGUA_EN_COMUNIDADES",
+                                "ASISTENCIA_ALIMENTARIA", "SEGURIDAD_ALIM_INSTITUCIONAL",
+                                "TRATAMIENTO_DESNUTRICION_AGUDA", "FORTALECIMIENTO_INSTITUCIONAL",
+                                "CAPACITACIONES_PROTECCION", "SALUD_MATERNA_INFANTIL", "VIH",
+                                "COMUNIDADES_SALUD", "RED_INTEGRADA_SALUD",
+                                "INFORMACION_RIESGOS", "PROVISION_DE_SERVICIO", "SALUD_POBLACIONAL",
+                                "WASH_EN_EDUCACION", "CAPACITACIONES_NUTRICION", "RED_DE_PROTECCION",
+                                "SUMINISTROS_MEDICAMENTOS_BASICOS", "ESTABLECIMIENTOS_SALUD",
+                                "SANEAMIENTO", "INCIDENCIA_CON_AUTORIDADES")], 1,
+                        function(i){paste(na.omit(i), collapse = ", ")})
+
+cat %>% ungroup() %>% select(categories, count) %>% 
+  arrange(desc(count))
+
+
+```
+# doesn't work 
+
+```{r}
+cat <- act_ben %>% 
+  filter(categoria != "VACUNACION" & categoria != "OTRO") %>% 
+  group_by(pcode3, categoria) %>% 
+  summarise(beneficiarios = sum(beneficiarios)) %>% 
+  mutate(beneficiarios2 = beneficiarios) %>% 
+  pivot_wider(names_from = categoria, values_from = beneficiarios2) %>%
+  replace(is.na(.), 0) %>% 
+  group_by(pcode3) %>% 
+  summarise(across(everything(), ~ sum(., is.na(.), 0))) %>% 
+  mutate(PREVENCION_DESNUTRICION_AGUDA = ifelse(PREVENCION_DESNUTRICION_AGUDA != 0,
+                                                "PREVENCION_DESNUTRICION_AGUDA", NA_character_),
+         CAPACITACIONES_PROTECCION = ifelse(CAPACITACIONES_PROTECCION != 0,
+                                            "CAPACITACIONES_PROTECCION",NA_character_),
+         TRATAMIENTO_DESNUTRICION_AGUDA = ifelse(TRATAMIENTO_DESNUTRICION_AGUDA != 0,
+                                                 "TRATAMIENTO_DESNUTRICION_AGUDA", NA_character_),
+         ASISTENCIA_ALIMENTARIA = ifelse(ASISTENCIA_ALIMENTARIA != 0, 
+                                         "ASISTENCIA_ALIMENTARIA", NA_character_),
+         RESILENCIA_EDUCACION = ifelse(RESILENCIA_EDUCACION != 0, "RESILENCIA_EDUCACION", NA_character_),
+         FORTALECIMIENTO_INSTITUCIONAL = ifelse(FORTALECIMIENTO_INSTITUCIONAL != 0,
+                                                "FORTALECIMIENTO_INSTITUCIONAL", NA_character_),
+         WASH_EN_EDUCACION = ifelse(WASH_EN_EDUCACION != 0, 
+                                    "WASH_EN_EDUCACION", NA_character_), 
+         SEGURIDAD_ALIM_INSTITUCIONAL = ifelse(SEGURIDAD_ALIM_INSTITUCIONAL != 0,
+                                               "SEGURIDAD_ALIM_INSTITUCIONAL", NA_character_),
+         VIH = ifelse(VIH != 0, "VIH", NA_character_),
+         SALUD_POBLACIONAL = ifelse(SALUD_POBLACIONAL != 0, 
+                                    "SALUD_POBLACIONAL", NA_character_),
+         PROVISION_DE_SERVICIO = ifelse(PROVISION_DE_SERVICIO != 0,
+                                        "PROVISION_DE_SERVICIO_PG", NA_character_),
+         INCIDENCIA_CON_AUTORIDADES = ifelse(INCIDENCIA_CON_AUTORIDADES != 0,
+                                             "INCIDENCIA_CON_AUTORIDADES_PG", NA_character_),
+         COMUNIDADES_SALUD = ifelse(COMUNIDADES_SALUD != 0, 
+                                    "COMUNIDADES_SALUD", NA_character_),
+         RED_INTEGRADA_SALUD = ifelse(RED_INTEGRADA_SALUD != 0, 
+                                      "RED_INTEGRADA_SALUD", NA_character_),
+         INFORMACION_RIESGOS = ifelse(INFORMACION_RIESGOS != 0, 
+                                      "INFORMACION_RIESGOS_PG", NA_character_),
+         PROVISION_DE_SERVICIOS = ifelse(PROVISION_DE_SERVICIOS != 0,
+                                         "PROVISION_DE_SERVICIOS_PN", NA_character_),
+         PROMOCION_HIGIENE = ifelse(PROMOCION_HIGIENE != 0, 
+                                    "PROMOCION_HIGIENE", NA_character_),
+         AGUA_EN_COMUNIDADES = ifelse(AGUA_EN_COMUNIDADES != 0, "AGUA_EN_COMUNIDADES", NA_character_),
+         WASH_EN_SALUD_NUTRICION = ifelse(WASH_EN_SALUD_NUTRICION != 0, 
+                                          "WASH_EN_SALUD_NUTRICION", NA_character_),
+         FORTALECIMIENTO_CAPACIDAD_EDUCACION = ifelse(FORTALECIMIENTO_CAPACIDAD_EDUCACION != 0,
+                                                      "FORTALECIMIENTO_CAPACIDAD_EDUCACION", NA_character_),
+         ACCESO_PERMANENCIA_ESCOLAR = ifelse(ACCESO_PERMANENCIA_ESCOLAR != 0, 
+                                             "ACCESO_PERMANENCIA_ESCOLAR", NA_character_),
+         SALUD_MATERNA_INFANTIL = ifelse(SALUD_MATERNA_INFANTIL != 0, 
+                                         "SALUD_MATERNA_INFANTIL", NA_character_),
+         SUMINISTROS_MEDICAMENTOS_BASICOS = ifelse(SUMINISTROS_MEDICAMENTOS_BASICOS != 0, 
+                                                   "SUMINISTROS_MEDICAMENTOS_BASICOS", NA_character_),
+         SANEAMIENTO = ifelse(SANEAMIENTO != 0, 
+                              "SANEAMIENTO", NA_character_),
+         RED_DE_PROTECCION = ifelse(RED_DE_PROTECCION != 0, "RED_DE_PROTECCION", NA_character_),
+         CAPACITACIONES_NUTRICION = ifelse(CAPACITACIONES_NUTRICION != 0, 
+                                           "CAPACITACIONES_NUTRICION", NA_character_),
+         ESTABLECIMIENTOS_SALUD = ifelse(ESTABLECIMIENTOS_SALUD != 0, 
+                                         "ESTABLECIMIENTOS_SALUD", NA_character_)) %>% 
+  select(-c(beneficiarios))
+
+plyr::count(cat[,-1]) %>% arrange(desc(freq))
+
+plyr::count(cat, vars = c("ACCESO_PERMANENCIA_ESCOLAR", "FORTALECIMIENTO_CAPACIDAD_EDUCACION", 
+                          "PREVENCION_DESNUTRICION_AGUDA", "PROMOCION_HIGIENE", "PROVISION_DE_SERVICIOS",
+                          "RESILENCIA_EDUCACION", "WASH_EN_SALUD_NUTRICION", "AGUA_EN_COMUNIDADES",
+                          "ASISTENCIA_ALIMENTARIA", "SEGURIDAD_ALIM_INSTITUCIONAL",
+                          "TRATAMIENTO_DESNUTRICION_AGUDA", "FORTALECIMIENTO_INSTITUCIONAL",
+                          "CAPACITACIONES_PROTECCION", "SALUD_MATERNA_INFANTIL", "VIH",
+                          "COMUNIDADES_SALUD", "RED_INTEGRADA_SALUD",
+                          "INFORMACION_RIESGOS", "PROVISION_DE_SERVICIO", "SALUD_POBLACIONAL",
+                          "WASH_EN_EDUCACION", "CAPACITACIONES_NUTRICION", "RED_DE_PROTECCION",
+                          "SUMINISTROS_MEDICAMENTOS_BASICOS", "ESTABLECIMIENTOS_SALUD",
+                          "SANEAMIENTO", "INCIDENCIA_CON_AUTORIDADES"))
+
+```
+
+As a note, the number of organisations present in a parrish is highly correlated with the number of sectors present there (a correlation coefficient of `r round(cor(parr0$org_count, parr0$sector_count, method = c("pearson")), digits = 3)`). A scatterplot would be repetitive and very similar to the one in section 3b and not deepen our understanding of the actual coverage.
