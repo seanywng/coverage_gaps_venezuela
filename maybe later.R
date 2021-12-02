@@ -981,3 +981,38 @@ plyr::count(cat, vars = c("ACCESO_PERMANENCIA_ESCOLAR", "FORTALECIMIENTO_CAPACID
 ```
 
 As a note, the number of organisations present in a parrish is highly correlated with the number of sectors present there (a correlation coefficient of `r round(cor(parr0$org_count, parr0$sector_count, method = c("pearson")), digits = 3)`). A scatterplot would be repetitive and very similar to the one in section 3b and not deepen our understanding of the actual coverage.
+
+# the scatterplot will be at parrish level
+
+```{r ms-state-scatter-PLOT, fig.height=5}
+
+ms_scatter <- parr0 %>% 
+  group_by(estado) %>% 
+  summarise(multi_sector_ben = sum(ms_ben_max),
+            one_sector_ben = round(sum(ben_freq) - sum(ms_ben_max), digits = 0),
+            ben_freq = round(sum(ben_freq), digits = 0)) %>% 
+  mutate(multi_sector_percent = round(multi_sector_ben / ben_freq * 100, digits = 1),
+         one_sector_percent = round(one_sector_ben / ben_freq * 100, digits = 1)) %>% 
+  ggplot(aes(x = ben_freq, 
+             y = multi_sector_percent)) +
+  geom_point(aes(size = one_sector_ben), 
+             alpha = 0.8, colour = "coral") +
+  geom_text(aes(label = estado), size = 1.5) +
+  scale_x_continuous(trans = "log10", labels = comma) +
+  scale_size_continuous(range = c(0.3, 10)) +
+  xlab("Beneficiary frequencies") + ylab("Percentage received multi-sector support") +
+  labs(title = "Scatterplot of states by beneficiary frequencies and multi-sector coverage") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 8.5))
+
+ggplotly(ms_scatter, tooltip = c("x", "y", "text", "size")) %>% 
+  layout(legend = list(font = list(size = 6))) %>% 
+  config(displayModeBar = FALSE) %>% 
+  layout(title = list(text = paste0(
+    "Scatterplot of states by beneficiary frequencies and multi-sector coverage",
+    "<br>",
+    "<sup>",
+    "size: beneficiaries who only received support from one sector; mouse over for details","</sup>")))
+
+
+```
