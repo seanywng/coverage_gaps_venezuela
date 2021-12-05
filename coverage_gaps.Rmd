@@ -434,7 +434,8 @@ parr %>%
                                    not_reached > 0 & beneficiarios >= 1 ~ "under", 
                                    beneficiarios == 0 ~ "not_reached")) %>%  
   filter(coverage_type == "over") %>% 
-  select(estado, municipio, parroquia, beneficiaries = beneficiarios, poor_persons = pob_pobre) %>%
+  select(state = estado, municipality = municipio, parrish = parroquia, 
+         beneficiaries = beneficiarios, poor_persons = pob_pobre) %>%
   mutate(coverage_percent = beneficiaries / poor_persons * 100) %>% 
   arrange(desc(beneficiaries)) %>% 
   pander(big.mark = ",", caption = "Top 11 parrishes by coverage", style = "rmarkdown")
@@ -469,9 +470,9 @@ All of the clusters reached more women than men, with Health and Protection bein
 act_ben %>% 
   mutate(sex_ben = case_when(str_detect(desagregacion, "^m") ~ "male",
                              str_detect(desagregacion, "^f") ~ "female"),
-         actividad = str_to_sentence(actividad)) %>% 
+         activity = str_to_sentence(actividad)) %>% 
   filter(sector == "Proteccion") %>% 
-  group_by(actividad) %>% 
+  group_by(activity) %>% 
   summarise(ben_freq = sum(beneficiarios), 
             male = sum(beneficiarios[sex_ben == "male"]), 
             female = sum(beneficiarios[sex_ben == "female"])) %>% 
