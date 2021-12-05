@@ -18,26 +18,6 @@ ven2 %>%
                              
                            )))
 
-rename(percent_pobre_ham_2019 = ham_2019_xx_pobreza_env_por_parroquia,
-       percent_sin_saneamiento_mejorado = x_saneamiento_percent_sin_saneamiento_mejorado,
-       percent_no_tiene_servicio_electrico = 
-         servicio_electrico_percent_no_tiene_servicio_electrico,
-       percent_analfabeto = percent_poblacion_10_anos_y_mas_analfabeta,
-       percent_sin_agua_segura = x_abast_agua2_percent_sin_agua_segura,
-       poblacion_2019 = x_2019_poblacion_parroquial_total,
-       personas_pobre_2019 = ham_2019_xx_poblacion_pobre_por_parroquia,
-       densidad_ppl_km2 = densidad_poblacional_ppl_km2) %>% 
-  
-  rename(poblacion_2019 = x_2019_poblacion_parroquial_total,
-         percent_pobre_ham_2019 = ham_2019_xx_pobreza_env_por_parroquia,
-         percent_sin_saneamiento_mejorado = x_saneamiento_percent_sin_saneamiento_mejorado,
-         percent_no_tiene_servicio_electrico = 
-           servicio_electrico_percent_no_tiene_servicio_electrico,
-         percent_analfabeto = percent_poblacion_10_anos_y_mas_analfabeta,
-         percent_sin_agua_segura = x_abast_agua2_percent_sin_agua_segura,
-         poblacion_2019 = x_2019_poblacion_parroquial_total,
-         personas_pobre_2019 = ham_2019_xx_poblacion_pobre_por_parroquia,
-         densidad_ppl_km2 = densidad_poblacional_ppl_km2) %>%
   
   act_parr <- act_ben %>% 
   filter(categoriadeactividad != "Vacunacion") %>% 
@@ -137,101 +117,6 @@ rpart.rules.table(tree3)
 expand_limits(x = c(0, length(levels(parr0$estado)) + 1))
 
 
-# can you try figuring out a function to do this? 
-# you did figure it out
-
-rbind(parr %>% 
-        filter(not_covered_pobre <= 0) %>% 
-        summarise(parroquias = n(),
-                  beneficiarios = sum(beneficiarios),
-                  avg_org_count = mean(org_count),
-                  percent_pobre = (sum(pob_pobre)) / (sum(poblacion_2019)),
-                  percent_urbana = (sum(pob_urbana)) / (sum(poblacion_2019)),
-                  percent_sin_agua_segura = (sum(pob_sin_agua_segura)) / (sum(poblacion_2019)),
-                  percent_sin_saneamiento_mejorado = (sum(pob_sin_saneamiento_mejorado, na.rm = TRUE)) /
-                    (sum(poblacion_2019, na.rm = TRUE))) %>% 
-        mutate_if(is.numeric, format, digits = 3), 
-      
-      parr %>% 
-        filter(beneficiarios >= 1) %>% 
-        summarise(parroquias = n(), 
-                  beneficiarios = sum(beneficiarios),
-                  avg_org_count = mean(org_count),
-                  percent_pobre = (sum(pob_pobre)) / (sum(poblacion_2019)),
-                  percent_urbana = (sum(pob_urbana)) / (sum(poblacion_2019)),
-                  percent_sin_agua_segura = (sum(pob_sin_agua_segura)) / (sum(poblacion_2019)),
-                  percent_sin_saneamiento_mejorado = (sum(pob_sin_saneamiento_mejorado, na.rm = TRUE)) /
-                    (sum(poblacion_2019, na.rm = TRUE))) %>% 
-        mutate_if(is.numeric, format, digits = 3), 
-      
-      parr %>% filter(beneficiarios < 1) %>% 
-        summarise(parroquias = n(),
-                  beneficiarios = sum(beneficiarios),
-                  avg_org_count = mean(org_count),
-                  percent_pobre = (sum(pob_pobre)) / (sum(poblacion_2019)),
-                  percent_urbana = (sum(pob_urbana)) / (sum(poblacion_2019)),
-                  percent_sin_agua_segura = (sum(pob_sin_agua_segura)) / (sum(poblacion_2019)),
-                  percent_sin_saneamiento_mejorado = (sum(pob_sin_saneamiento_mejorado, na.rm = TRUE)) /
-                    (sum(poblacion_2019, na.rm = TRUE))) %>% 
-        mutate_if(is.numeric, format, digits = 3)) %>% 
-  gather(key = var_name, value = value, 2:ncol(.)) %>% 
-  spread_(key = names(.)[1], value = 'value') %>% 
-  relocate(`641`, .after = `10`) %>% 
-  mutate(`10` = as.numeric(`10`),
-         `641` = as.numeric(`641`),
-         `530` = as.numeric(`530`)) %>% 
-  pander(big.mark = ",")
-
-
-
-# currently evalled out and excluded. I have put all the code into the parr chunk. 
-cen_ref <- read_excel("census data 20191122.xlsx", sheet = "data") %>% 
-  clean_names() %>% 
-  select(estado, pcode1, municipio, pcode2, parroquia, pcode3, 
-         fo = field_office,
-         poblacion_2019 = x_2019_poblacion_parroquial_total,
-         hogares_2011 = numero_de_hogares, 
-         ham_2019_ambitos_ge, 
-         percent_pobre_2019 = ham_2019_xx_pobreza_env_por_parroquia, 
-         pob_pobre = ham_2019_xx_poblacion_pobre_por_parroquia, 
-         poblacion_total_2011,
-         poblacion_infantil_menor_de_12_anos, poblacion_adolescentes_de_12_a_17_anos,
-         poblacion_de_18_anos_y_mas, 
-         percent_urbana = poblacion_urbana_percent, 
-         area_km2, 
-         densidad_ppl_km2 = densidad_poblacional_ppl_km2,
-         matricula_2017_educacion_inicial, matricula_2017_educacion_primaria, 
-         matricula_2017_educacion_media, razon_de_dependencia_total,
-         razon_de_dependencia_de_menores_de_15_anos, 
-         percent_sin_agua_segura = x_abast_agua2_percent_sin_agua_segura,
-         percent_sin_saneamiento_mejorado = x_saneamiento_percent_sin_saneamiento_mejorado,
-         percent_analfabeto = percent_poblacion_10_anos_y_mas_analfabeta,
-         promedio_de_personas_por_vivienda,
-         percent_hogares_jefatura_femenina = percent_de_hogares_con_jefatura_femenina,
-         percent_sin_servicio_electrico = servicio_electrico_percent_no_tiene_servicio_electrico,
-         ham_2019_x_violencia_envelope, ham_2019_x_mortalidad_y_salud_envelope, 
-         ham_2019_x_pobreza_envelope, promedio_de_edad) %>% 
-  mutate(estado    = rm_accent(str_to_upper(estado)), # just to make sure 
-         municipio  = rm_accent(str_to_upper(municipio)),
-         parroquia  = rm_accent(str_to_upper(parroquia))) %>% 
-  mutate(pob_menor_de_18  = 
-           (poblacion_infantil_menor_de_12_anos + poblacion_adolescentes_de_12_a_17_anos) /
-           poblacion_total_2011 * poblacion_2019, 
-         pob_18_y_mas    = poblacion_de_18_anos_y_mas / poblacion_total_2011 * poblacion_2019, 
-         hogares_2019    = hogares_2011 * poblacion_2019 / poblacion_total_2011, 
-         matricula_total = matricula_2017_educacion_inicial + matricula_2017_educacion_primaria + 
-           matricula_2017_educacion_media) %>% 
-  mutate_at(vars(percent_analfabeto, percent_sin_servicio_electrico, percent_sin_agua_segura,
-                 percent_sin_saneamiento_mejorado,
-                 percent_hogares_jefatura_femenina, percent_urbana,
-                 razon_de_dependencia_total), ~(. / 100)) %>% 
-  mutate(pob_analfabeto               =  percent_analfabeto * poblacion_2019,
-         pob_sin_agua_segura          = percent_sin_agua_segura * poblacion_2019, 
-         pob_sin_servicio_electrico   = percent_sin_servicio_electrico * poblacion_2019,
-         pob_sin_saneamiento_mejorado = percent_sin_saneamiento_mejorado * poblacion_2019,
-         pob_urbana                   = percent_urbana * poblacion_2019) %>% 
-  select(-c(poblacion_infantil_menor_de_12_anos, poblacion_adolescentes_de_12_a_17_anos, 
-            poblacion_de_18_anos_y_mas, hogares_2011, poblacion_total_2011))
 
 # I don't really need this
 <div class="fold s o">
@@ -264,38 +149,6 @@ estado_choices <- c("ALL" = "ALL", "DISTRITO CAPITAL" = "DISTRITO CAPITAL",
 # no longer needed
 ```{r location-cleaning}
 
-locations <- read_excel("locations_20191111_1600.xlsx") %>%
-  clean_names() %>% 
-  rename(ubicacion = comunidad_o_centro) %>% 
-  mutate(estado    = rm_accent(str_to_upper(estado)), # just to make sure 
-         municipio = rm_accent(str_to_upper(municipio)),
-         parroquia = rm_accent(str_to_upper(parroquia)),
-         ubicacion = rm_accent(str_to_upper(ubicacion))) %>% 
-  select(estado, pcode1, municipio, pcode2, parroquia, pcode3, ubicacion)
-
-ven1 <- ven1 %>% 
-  left_join(locations, by = "ubicacion") %>% 
-  mutate(estado    = coalesce(estado.y, estado.x),
-         pcode1    = coalesce(pcode1.y, pcode1.x),
-         municipio = coalesce(municipio.y, municipio.x),
-         pcode2    = coalesce(pcode2.y, pcode2.x),
-         parroquia = coalesce(parroquia.y, parroquia.x),
-         pcode3    = coalesce(pcode3.y, pcode3.x)) %>%
-  select(-estado.x, -estado.y, -pcode1.x, -pcode1.y,
-         -municipio.x, -municipio.y, -pcode2.x, -pcode2.y,
-         -parroquia.x, -parroquia.y, -pcode3.x, -pcode3.y) %>% 
-  distinct()
-
-# next step is to resolve the admin locations
-adm_dirty <- ven1 %>% 
-  filter(is.na(estado) | is.na(pcode1) |
-           is.na(municipio) | is.na(pcode2) |
-           is.na(parroquia) | is.na(pcode3))
-
-adm_clean <- ven1 %>% 
-  filter(!is.na(estado) & !is.na(pcode1) &
-           !is.na(municipio) & !is.na(pcode2) &
-           !is.na(parroquia) & !is.na(pcode3)) 
 
 # the distinct() actually clears out some duplicates in the data, 
 #so it doesn't tally with the dataset from before 
