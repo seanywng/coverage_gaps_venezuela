@@ -869,3 +869,11 @@ ggplotly(ms_scatter, tooltip = c("x", "y", "text", "size")) %>%
 
 
 ```
+
+pander(caption = "Most common inter-cluster activity category combinations", style = "rmarkdown",  
+       justify = c("left", "right"))
+
+pander(caption = "Cluster combinations, sorted by pair_sum", big.mark = ",", missing = "",
+       justify = c("left", "right", "right", "right", "right", "right"), style = "rmarkdown")
+
+pander(big.mark = ",", caption = "Summary table of the terminal nodes of tree3")

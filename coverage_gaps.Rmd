@@ -1,7 +1,7 @@
 ---
 title: "Coverage and gaps in the humanitarian response in Venezuela in 2019"
 author: "Sean Ng"
-date: "25/11/2021"
+date: "24/11/2021"
 output: 
   html_document:
     code_download: true
@@ -73,6 +73,9 @@ panderOptions("big.mark", ",")
 rm_accent <- function(colns){
   colns <- stri_trans_general(colns, "Latin-ASCII")
 }
+
+# for kable to treat NA as blank
+options(knitr.kable.NA = '')
 
 ```
 
@@ -371,7 +374,7 @@ gaps_map <- parr %>%
 # no you can't. 
 ggplotly(gaps_map, tooltip = c("text")) %>%
   layout(showlegend = TRUE, legend = list(font = list(size = 6))) %>% 
-  style(hoveron = "fill") %>% 
+  plotly::style(hoveron = "fill") %>% 
   layout(title = list(text = paste0("Map of parrishes by number poor persons not reached",
                                     "<br>",
                                     "<sup>",
@@ -878,11 +881,11 @@ clust_com %>%
   filter(str_detect(combination, "only$")) %>% 
   group_by(combination) %>% 
   summarise(parrishes = n(),
-            cluster1 = sum(cluster1),
-            cluster2 = sum(cluster2),
-            pair_sum = sum(pair_sum)) %>% 
+            cluster1 = round(sum(cluster1), digits = 0),
+            cluster2 = round(sum(cluster2), digits = 0),
+            pair_sum = round(sum(pair_sum), digits = 0)) %>%
   mutate(`%ms_max` = pmin(cluster1, cluster2) / pair_sum * 100,
-         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>% 
+         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>%
   arrange(desc(pair_sum)) %>% 
   rbind(NA),
 
@@ -890,17 +893,18 @@ clust_com %>%
   filter(!str_detect(combination, "only$")) %>% 
   group_by(combination) %>% 
   summarise(parrishes = n(),
-            cluster1 = sum(cluster1),
-            cluster2 = sum(cluster2),
-            pair_sum = sum(pair_sum)) %>% 
+            cluster1 = round(sum(cluster1), digits = 0),
+            cluster2 = round(sum(cluster2), digits = 0),
+            pair_sum = round(sum(pair_sum), digits = 0)) %>% 
   mutate(`%ms_max` = pmin(cluster1, cluster2) / pair_sum * 100,
-         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>% 
+         `%ms_max` = round(ifelse(is.nan(`%ms_max`), 0, `%ms_max`), digits = 1)) %>%
   arrange(desc(pair_sum))
 
 ) %>% 
 
-  pander(caption = "Cluster combinations, sorted by pair_sum", big.mark = ",", missing = "",
-         justify = c("left", "right", "right", "right", "right", "right"), style = "rmarkdown")
+  kable(caption = "Cluster combinations, sorted by pair_sum", format.args = list(big.mark = ",")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
   
 ```
 
@@ -954,9 +958,12 @@ as.data.frame(cat_comb) %>%
   distinct() %>% 
   arrange(desc(count)) %>% 
   head(15) %>% 
-  pander(caption = "Most common inter-cluster activity category combinations", style = "rmarkdown",  
-         justify = c("left", "right"))
+  kbl(caption = "Most common inter-cluster activity category combinations") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+  
+  
 ```
+<br> 
 
 Of the 15 most common activity category combinations, we see only four combinations which might actually convey multi-sector benefits: 
 
