@@ -53,7 +53,6 @@ library(factoextra)
 library(shiny)
 
 library(ggmap)
-library(ggrepel)
 library(sf)
 library(rmapshaper)
 library(viridis)
