@@ -80,7 +80,7 @@ options(knitr.kable.NA = '')
 
 ## 1. Introduction
 
-Humanitarian needs always grossly outweigh available funding; however, it remains an industry-wide challenge to respond adequately to gaps in coverage and reallocate resources accordingly. Too often, once committed to a course of action, clusters and their humanitarian partners do not re-examine or re-evaluate their interventions. This results in responses ending with glaring gaps that are either not resolved in a timely manner or go completely unaddressed.
+Humanitarian needs always grossly outweigh available funding; however, it remains an industry-wide challenge to respond adequately to gaps in coverage and reallocate resources accordingly. Too often, once committed to a course of action, clusters and their humanitarian partners do not re-examine or re-evaluate their interventions. This results in responses with glaring gaps that are either not resolved in a timely manner or go completely unaddressed.
 
 This automated reported is intended to serve as a template for a coverage and gaps analysis. It provides examples of the analyses necessary to identify populations in need who are not served by humanitarian action and provide recommendations on how partners may best reach them. 
 
@@ -492,7 +492,7 @@ For reference, the sex ratio of the country as a whole was 0.99 in the last cens
 
 <br><br><br><br>
 
-## 3. Geographical analysis of Gaps
+## 3. Geographical analysis of gaps
 
 ### 3a. Barplot of coverage and gaps by state
 
@@ -553,7 +553,8 @@ ggplotly(state_stack) %>%
 
 **`r round(filter(parr, estado %in% c("DISTRITO CAPITAL", "MIRANDA", "ZULIA", "TACHIRA", "BOLIVAR")) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 1)`%** of all beneficiaries are from the states of Distrito Capital, Miranda, Tachira, Bolivar and Zulia, largely corresponding to the locations of UNICEF offices. These states, with the addition of Delta Amacuro, are also where the highest percentages of poor persons have been reached. 
 
-Carabobo has the lowest percentage of its poor population covered. On average, after the exclusion of the top `r nrow(parr[parr$not_reached <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide. 
+Carabobo has the lowest percentage of its poor population covered. On average, after the exclusion of the top `r nrow(parr[parr$not_reached <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide. However, at the state level, this average is **`r parr0 %>% group_by(estado) %>% summarise(percent_reached = beneficiarios / pob_pobre, .groups = "drop") %>% ungroup() %>% summarise(avg = mean(percent_reached) * 100, .groups = "drop") %>% pull() %>% round(digits = 1)`%**. 
+
 
 Whilst there are many poor persons yet to be reached in states where we have relatively high coverage, there is a need to ensure that our operational footprint and the consequent resources allocated are equitable and this type of overallocation is avoided -- the crisis in Venezuela is nationwide, and unlike an earthquake or a typhoon where there is an epicentre or a stormpath, there is no programmatic rationale to only focus on a few areas. 
 
@@ -776,7 +777,7 @@ parr0 %>%
 
 ```
 
-However, we do note that in the states where UNICEF has offices (Bolivar, Tachira, Zulia and Distrito Capital), there is much higher multi-sector coverage than in other states, perhaps indicating that a more decentralised approach where field offices have greater say in prioritisation might lead to more coordination in multi-sector programming. Though, that this greater multi-sector coverage has not expanded outside of these states to the other areas uncer their purview is indicative of the level of planning and coordination capacity field offices are capable of. 
+However, we do note that in the states where UNICEF has offices (Bolivar, Tachira, Zulia and Distrito Capital), there is much higher multi-sector coverage than in other states, perhaps indicating that a more decentralised approach where field offices have greater say in prioritisation might lead to more coordination in multi-sector programming. Though, that this greater multi-sector coverage has not expanded outside of these states to the other areas under their purview is indicative of the level of planning and coordination capacity field offices are capable of. 
 
 <br><br>
 
@@ -978,7 +979,7 @@ Combinations like **Access to education and student retention / Prevention of ac
 
 Furthermore, combinations like **Prevention of acute malnutrition / Resilience in education** (2nd) and **Capacity building in education / Prevention of acute malnutrition** (3rd) have no overlap as malnutrition prevention has no programmatic link to safe school strategies, DRR in schools or teacher training.
 
-As it stands, cluster footprints seem to have much more to do with opportunistic expansion strategies dependent on partners' preferred footprints than a needs-based approach which targets the most vulnerable. The next chapter is an effort to examine and correct this. 
+As it stands, cluster footprints seem to have much more to do with opportunistic expansion strategies dependent on partners' preferred areas than a needs-based approach which targets the most vulnerable. The next chapter is an effort to examine and correct this. 
 
 <br><br><br><br>  
 
@@ -1144,7 +1145,7 @@ parr0 %>%
 
 * **[6]** is where access starts to get more challenging -- though these parrishes have an average poverty incidence of `r round(filter(parr0, rule3 == "6") %>% {sum(.$pob_pobre) / sum(.$poblacion_2019)} * 100, digits=1)`%, the rate of urbanisation drops to `r round(filter(parr0, rule3 == "6") %>% {sum(.$pob_urbana) / sum(.$poblacion_2019)} * 100, digits=1)`% and the population density is only 18 ppl/km2. But there are still more poor persons not covered per parrish in this group than in **[4]**. There are `r filter(parr0, rule3 == "6") %>% nrow()` parrishes in this group. 
 
-* **[7]** consists of the poorest, most vulnerable and most remote parrishes. Working in these areas will incur significant operational and logistical costs. However, with an average poverty incidence of `r round(filter(parr0, rule3 == "7") %>% {sum(.$pob_pobre) / sum(.$poblacion_2019)} * 100, digits=1)`%, blanket coverage will be warranted in many cases -- if the challenge of reaching all of the population can be met. Additionally, they also have the lowest average number of poor persons not covered, given their extremely low population density of 1.8 ppl/km2. Humanitarian agencies have the lowest presence in these parrishes. It is advisable for donors to incentivise activities in these areas as it is clear that humanitarian agencies are avoiding them. There are `r filter(parr0, rule3 == "7") %>% nrow()` parrishes in this group.
+* **[7]** consists of the poorest, most vulnerable and most remote parrishes. Working in these areas will incur significant operational and logistical costs. However, with an average poverty incidence of `r round(filter(parr0, rule3 == "7") %>% {sum(.$pob_pobre) / sum(.$poblacion_2019)} * 100, digits=1)`%, blanket coverage will be warranted in many cases -- if the challenge of reaching all of the population can be met. Additionally, they also have the lowest average number of poor persons not covered, given their extremely low population density of 1.8 ppl/km2. Humanitarian agencies have the lowest presence in these parrishes. It is advisable for donors to incentivise activities in these areas as they are very underserved. There are `r filter(parr0, rule3 == "7") %>% nrow()` parrishes in this group.
 
 <br><br>
 
@@ -1205,7 +1206,7 @@ Above is a map of parrishes by their decision tree node (denoted by colour), we 
 
 We also see three large clusters of parrishes from node **[7]** -- the poorest and most-sparsely populated areas -- in Amazonas and Bolivar (at the bottom of the map), in Delta Amacuro (at the extreme right) and in Lara and Falcon (top-left). Double-click on each legend item to toggle the view.  
 
-As a final note for this chapter, the prioritisation tree was limited to four terminal nodes because they captured the vast majority of the variance amongst the parrishes -- any more splits would only have diminishing returns. But, should a partner want to see a more complex tree with more nodes, it would be very easy to supply them with it. But I feel these would mostly serve as references, rather than actual prioritisation tools -- I already question partners' ability to deal with 4 separate groups, each requiring their own strategies, much less 8 or 10.
+As a final note for this chapter, the prioritisation tree was limited to four terminal nodes because they captured the vast majority of the variance amongst the parrishes -- any more splits would only have diminishing returns. But, should a partner want to see a more complex tree with more nodes, it would be very easy to supply them with it. But I feel these more complex trees would mostly serve as references, rather than actual prioritisation tools -- I already question partners' ability to deal with 4 separate groups, each requiring their own strategies, much less 8 or 10.
 
 <br>
 
