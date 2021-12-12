@@ -877,3 +877,58 @@ pander(caption = "Cluster combinations, sorted by pair_sum", big.mark = ",", mis
        justify = c("left", "right", "right", "right", "right", "right"), style = "rmarkdown")
 
 pander(big.mark = ",", caption = "Summary table of the terminal nodes of tree3")
+
+```{r parr0-state-PLOT, fig.height=5}
+# ref for printing state_ord
+# parr0 %>% 
+#   group_by(estado) %>% 
+#   summarise(not_reached = sum(not_reached)) %>% 
+#   arrange(desc(not_reached)) %>% 
+#   select(estado) %>% as.list(as.data.frame(t(.))) %>% print()
+
+state_ord <- c("ZULIA", "LARA", "CARABOBO", "MIRANDA", "ANZOATEGUI", "ARAGUA", "BOLIVAR",
+               "PORTUGUESA", "SUCRE", "GUARICO", "FALCON", "MONAGAS", "BARINAS", "MERIDA",
+               "TACHIRA", "TRUJILLO", "YARACUY", "APURE", "DISTRITO CAPITAL", "NUEVA ESPARTA",
+               "COJEDES", "VARGAS", "DELTA AMACURO", "AMAZONAS")
+
+stack_text <- parr0 %>% 
+  group_by(estado) %>% 
+  summarise(beneficiarios = sum(beneficiarios),
+            total = sum(pob_pobre)) %>% 
+  mutate(percent_reached = round(beneficiarios / total * 100, digits = 1)) %>% 
+  arrange(desc(total)) 
+
+state_stack <- parr0 %>% 
+  select(estado, beneficiarios, not_reached) %>% 
+  group_by(estado) %>%
+  summarise(beneficiarios = round(sum(beneficiarios), digits = 0), 
+            not_reached = round(sum(not_reached), digits = 0)) %>% 
+  pivot_longer(c(beneficiarios, not_reached),
+               names_to = "pob_type", values_to = "total") %>% 
+  
+  ggplot(aes(x = estado, y = total)) +
+  geom_col(aes(fill = pob_type)) +
+  scale_y_continuous(label = comma) +
+  scale_x_discrete(limits = state_ord) +
+  scale_fill_manual(values = c("coral", "royalblue")) +
+  geom_text(data = stack_text, aes(y = 20000,
+                                   label = percent_reached), 
+            size = 2.5, fontface = "bold", colour = "white") +
+  theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 6.5),
+        axis.text.y  = element_text(size = 5),
+        axis.title.y = element_text(size = 9),
+        plot.title   = element_text(size = 11)) +
+  xlab("") + ylab("Number of poor persons") + 
+  labs(fill = "",
+       title = "Barplot of poor persons by state by reached/not reached")
+
+ggplotly(state_stack) %>% 
+  layout(legend = list(font = list(size = 7))) %>% 
+  config(displayModeBar = FALSE) %>% 
+  layout(title = list(text = paste0(
+    "Barplot of poor persons by state by reached/not reached",
+    "<br>",
+    "<sup>",
+    "mouse over for details","</sup>")))
+
+```

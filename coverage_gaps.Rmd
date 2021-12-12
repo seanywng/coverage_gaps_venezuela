@@ -29,6 +29,7 @@ library(lubridate)
 library(janitor)
 library(stringi)
 library(stringr)
+library(tidytext)
 
 library(pander)
 library(DT)
@@ -82,7 +83,7 @@ options(knitr.kable.NA = '')
 
 Humanitarian needs always grossly outweigh available funding; however, it remains an industry-wide challenge to respond adequately to gaps in coverage and reallocate resources accordingly. Too often, once committed to a course of action, clusters and their humanitarian partners do not re-examine or re-evaluate their interventions. This results in responses with glaring gaps that are either not resolved in a timely manner or go completely unaddressed.
 
-This automated reported is intended to serve as a template for a coverage and gaps analysis. It provides examples of the analyses necessary to identify populations in need who are not served by humanitarian action and provide recommendations on how partners may best reach them. 
+This automated reported is intended to serve as a template for a coverage and gaps analysis. It provides examples of the analyses necessary to identify populations in need who are not served by humanitarian action and provide recommendations on how partners may best reach them. This document assumes that basic reporting has already occurred; and a more generic 5W report template may be found [here](https://seanywng.github.io/5W/#B_Reporting_on_the_5W_data).  
 
 Coverage and gaps analyses are key documents, but are also rarely taken into account during operational planning or referenced during revisions of major strategic documents, such as Humanitarian Response Plans (HRPs). Neither are they mentioned in OCHA's HRP guidance, and their usage remains quite uncommon. This document intends to show that coverage and gaps analyses are not complex, impenetrable tools; rather, they contain, and are principally concerned with, practical, actionable information. 
 
@@ -496,69 +497,66 @@ For reference, the sex ratio of the country as a whole was 0.99 in the last cens
 
 ### 3a. Barplot of coverage and gaps by state
 
-```{r parr0-state-PLOT, fig.height=5}
-# ref for printing state_ord
-# parr0 %>% 
-#   group_by(estado) %>% 
-#   summarise(not_reached = sum(not_reached)) %>% 
-#   arrange(desc(not_reached)) %>% 
-#   select(estado) %>% as.list(as.data.frame(t(.))) %>% print()
 
-state_ord <- c("ZULIA", "LARA", "CARABOBO", "MIRANDA", "ANZOATEGUI", "ARAGUA", "BOLIVAR",
-               "PORTUGUESA", "SUCRE", "GUARICO", "FALCON", "MONAGAS", "BARINAS", "MERIDA",
-               "TACHIRA", "TRUJILLO", "YARACUY", "APURE", "DISTRITO CAPITAL", "NUEVA ESPARTA",
-               "COJEDES", "VARGAS", "DELTA AMACURO", "AMAZONAS")
+```{r parr0-state-PLOT}
+# ordering the states 
+state_ord <- parr %>% 
+  group_by(estado) %>% 
+  summarise(beneficiarios = sum(beneficiarios), 
+            total = sum(pob_pobre)) %>% 
+  mutate(percent_reached = beneficiarios / total) %>% 
+  arrange(percent_reached) %>% select(estado) %>% pull()
   
-stack_text <- parr0 %>% 
+stack_text <- parr %>% 
   group_by(estado) %>% 
   summarise(beneficiarios = sum(beneficiarios),
-            total = sum(pob_pobre)) %>% 
+            total = sum(pob_pobre),
+            not_reached = sum(not_reached)) %>% 
   mutate(percent_reached = round(beneficiarios / total * 100, digits = 1)) %>% 
-  arrange(desc(total)) 
+  arrange(percent_reached) %>% 
+  mutate(percent_reached = paste0(percent_reached,"%")) 
 
-state_stack <- parr0 %>% 
+state_stack <- parr %>% 
   select(estado, beneficiarios, not_reached) %>% 
   group_by(estado) %>%
-  summarise(beneficiarios = round(sum(beneficiarios), digits = 0), 
+  summarise(beneficiaries = round(sum(beneficiarios), digits = 0), 
             not_reached = round(sum(not_reached), digits = 0)) %>% 
-  pivot_longer(c(beneficiarios, not_reached),
+  pivot_longer(c(beneficiaries, not_reached),
                names_to = "pob_type", values_to = "total") %>% 
   
-  ggplot(aes(x = estado, y = total)) +
-  geom_col(aes(fill = pob_type)) +
-  scale_y_continuous(label = comma) +
-  scale_x_discrete(limits = state_ord) +
-  scale_fill_manual(values = c("coral", "royalblue")) +
-  geom_text(data = stack_text, aes(y = 20000,
-                                   label = percent_reached), 
-            size = 2.5, fontface = "bold", colour = "white") +
-  theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 6.5),
-        axis.text.y  = element_text(size = 5),
-        axis.title.y = element_text(size = 9),
-        plot.title   = element_text(size = 11)) +
-  xlab("") + ylab("Number of poor persons") + 
-  labs(fill = "",
-       title = "Barplot of poor persons by state by reached/not reached")
+  ggplot(aes(x = total, y = estado)) +
+  geom_col(aes(fill = pob_type), colour = "grey70", size = 0.03) +
+  scale_x_continuous(label = comma, breaks = seq(0, 1800000, 200000)) +
+  scale_y_discrete(limits = state_ord) +
+  scale_fill_manual(values = c("#DE7065FF", "#403891FF")) +
+  geom_text(data = stack_text, aes(label = percent_reached), 
+            size = 2.5, colour = "white", fontface = "bold",
+            position = position_stack(vjust = 0.5)) +
+  ylab("") + xlab("Number of poor persons") + 
+  labs(fill = "", colour = "",
+       title = "Barplot of poor persons by state by reached/not reached") +
+  theme(plot.title   = element_text(size = 11), 
+        axis.text.x = element_text(size = 7, angle = 30),
+        axis.title.x = element_text(size = 9)) 
 
 ggplotly(state_stack) %>% 
   layout(legend = list(font = list(size = 7))) %>% 
   config(displayModeBar = FALSE) %>% 
   layout(title = list(text = paste0(
-    "Barplot of poor persons by state by reached/not reached",
+    "Barplot of poor persons by state by not reached/reached",
                                     "<br>",
                                     "<sup>",
-                                    "mouse over for details","</sup>")))
+                                    "mouse over for details; figures show percent reached","</sup>")))
 
 ```
 
-**`r round(filter(parr, estado %in% c("DISTRITO CAPITAL", "MIRANDA", "ZULIA", "TACHIRA", "BOLIVAR")) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 1)`%** of all beneficiaries are from the states of Distrito Capital, Miranda, Tachira, Bolivar and Zulia, largely corresponding to the locations of UNICEF offices. These states, with the addition of Delta Amacuro, are also where the highest percentages of poor persons have been reached. 
+**`r round(filter(parr, estado %in% c("DISTRITO CAPITAL", "MIRANDA", "ZULIA", "TACHIRA", "BOLIVAR")) %>% {sum(.$beneficiarios)} / sum(parr$beneficiarios) * 100, digits = 1)`%** of all beneficiaries are from the states of Distrito Capital, Miranda, Tachira, Bolivar and Zulia, largely corresponding to the locations of UNICEF offices. These states, with the addition of Delta Amacuro, are also where the highest percentages of poor persons have been reached. Barinas has the lowest percentage of its poor population covered.
 
-Carabobo has the lowest percentage of its poor population covered. On average, after the exclusion of the top `r nrow(parr[parr$not_reached <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide. However, at the state level, this average is **`r parr0 %>% group_by(estado) %>% summarise(percent_reached = beneficiarios / pob_pobre, .groups = "drop") %>% ungroup() %>% summarise(avg = mean(percent_reached) * 100, .groups = "drop") %>% pull() %>% round(digits = 1)`%**. 
-
+On average, after the exclusion of the top `r nrow(parr[parr$not_reached <= 0,])` parrishes, **`r round(sum(parr$beneficiarios) / sum(parr$pob_pobre) * 100, digits = 1)`%** of poor persons have been reached countrywide. However, at the state level, this average is **`r parr0 %>% group_by(estado) %>% summarise(percent_reached = beneficiarios / pob_pobre, .groups = "drop") %>% ungroup() %>% summarise(avg = mean(percent_reached) * 100, .groups = "drop") %>% pull() %>% round(digits = 1)`%**. 
 
 Whilst there are many poor persons yet to be reached in states where we have relatively high coverage, there is a need to ensure that our operational footprint and the consequent resources allocated are equitable and this type of overallocation is avoided -- the crisis in Venezuela is nationwide, and unlike an earthquake or a typhoon where there is an epicentre or a stormpath, there is no programmatic rationale to only focus on a few areas. 
 
-Let us now move down to a lower level of granularity as state-level analysis is still too superficial. Parrishes will be the main administrative unit of reference in this analysis. Unlike in the 5W cleaning and reporting document, where we focused on municipalities to display achievements for external audiences, greater precision is needed for a coverage and gaps analysis.
+Let us now move down to a lower level of granularity as state-level analysis is still too superficial. Parrishes will be the main administrative unit of reference in this analysis. Unlike in the [5W cleaning and reporting document](https://seanywng.github.io/5W/#B_Reporting_on_the_5W_data), where we focused on municipalities to display achievements for external audiences, greater precision is needed for a coverage and gaps analysis.
 
 <br><br>
 
@@ -984,9 +982,10 @@ As it stands, cluster footprints seem to have much more to do with opportunistic
 <br><br><br><br>  
 
 
+
 ## 5. Decision trees
 
-### 5a. Introduction to trees -- orgasational presence
+### 5a. Introduction to trees -- organisational presence
 
 To prioritise between the `r nrow(parr)` parrishes in Venezuela -- that is, to determine where we should be working -- it is necessary to split them up into more easily digestible groups, and we will use decision trees to do this. A prioritisation or vulnerability score is another commonly-used prioritisation tool, but, as we will see, collapsing a number of variables down into one score is not always helpful. 
 
@@ -1017,7 +1016,7 @@ This is, of course, not to imply that this actually depicts partners' decision-m
 
 <br><br>
 
-### 5b. Prioritisation trees
+### 5b. Prioritisation tree
 
 Now let us focus on future decisions: 
 
@@ -1268,7 +1267,7 @@ To summarise some important next steps:
 
 5. **Develop operations plans** that are area-focused and multi-sector; decentralise more decision-making power to field offices and increase personnel and capacity in the field offices to implement those plans. Request all datasets and products necessary to develop these plans. Country office-level planning also needs to be more coordinated and greater programmatic oversight must be exercised over each of the sections. 
 
-6. **Split humanitarian partners** into groups based on their capacity to work in the various groups established by the decision tree -- there is much low-hanging fruit in node [5], but the most vulnerable will be found in node [7]. This will help clusters understand if their current pool of partners is sufficient to cover the gaps we have mentioned.  
+6. **Split humanitarian partners** into groups based on their capacity to work in the various groups established by the decision tree -- there is much low-hanging fruit in node [5], but the most vulnerable will be found in node [7]. This will help clusters understand if their current pool of partners is sufficient to cover the gaps we have mentioned. A sample partner analysis has been included in the appendix of this document.   
 
 7. Clusters should **coordinate the selection of new parrishes** and ensure that there are enough agencies present in each to ensure that needs are met in a comprehensive and integrated manner. Partners should share their intended actions openly and communicate their targets at the parrish level. Review coverage and multi-sector programming in inter-cluster meetings. 
 
@@ -1315,3 +1314,4 @@ parr0 %>%
 
 
 ```
+
