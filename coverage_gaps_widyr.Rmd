@@ -746,7 +746,7 @@ ms_scatter <- parr0 %>%
   labs(title = "Scatterplot of parrishes by beneficiary frequencies and multi-sector coverage", 
        size = "", colour = "") +
   theme(plot.title = element_text(size = 11),
-        axis.title = element_text(size = 8.5)) 
+        axis.title = element_text(size = 8.5))
 
 ggplotly(ms_scatter, tooltip = c("x", "y", "size", "text")) %>% 
   layout(legend = list(font = list(size = 6))) %>% 
@@ -808,6 +808,45 @@ Next, we will summarise the inter-cluster combinations according to:
 * **cluster1** and **cluster2**, which show the number of beneficiary frequencies reached by both clusters in each pair, in the order that they appear in **combination**. 
 * **pair_sum**, which shows the total number of beneficiary frequencies in that pair i.e. the pair_sum for edu_nut would be the sum of education and nutrition beneficiaries. 
 * **%ms_max**, which shows the maximum percentage of multisector beneficiaries of each pair i.e. if the pair edu-nut has 10 education beneficiaries and 30 nutrition beneficiaries, the maximum number of beneficiaries which received support from both sectors is 10, resulting in a **%ms_max** of 25%. But, as mentioned in the notes for section 4a, this is just a theoretical maximum and the actual level of coincidence is likely much lower.
+
+```{r}
+glimpse(parr)
+  
+parr %>% 
+  select(pcode3, nutricion_ben:sa_ben) %>% 
+  pivot_longer(cols = c(nutricion_ben:sa_ben), names_to = "sector", values_to = "beneficiaries") %>% 
+  mutate(sector = str_replace_all(sector, c("_ben" = ""))) %>% 
+  select(pcode3, sector, beneficiaries) %>%
+  filter(beneficiaries != 0) %>% 
+  pairwise_count(sector, pcode3) %>% 
+  arrange(desc(n))
+
+
+  
+```
+
+```{r}
+act_ben %>% 
+  select(pcode3, sector, beneficiarios) %>% 
+  pairwise_cor(sector, pcode3, beneficiarios, upper = FALSE) %>% 
+  arrange(desc(correlation))
+```
+
+```{r}
+act_ben %>% 
+  select(pcode3, categoria) %>% 
+  distinct() %>% 
+  pairwise_count(categoria, pcode3) %>% 
+  arrange(desc(n)) %>% 
+  left_join(act_ben %>% select(sector1 = sector, categoria) %>% distinct(), 
+            by = c("item1" = "categoria")) %>% 
+  left_join(act_ben %>% select(sector2 = sector, categoria) %>% distinct(), 
+            by = c("item2" = "categoria")) %>% 
+  filter(sector1 != sector2) %>% 
+  mutate_at(vars(item1, item2), ~str_to_title(.))
+  
+```
+
 
 ```{r clust-com-REF-and-TABLE}
 # creation of reference df for the cluster combinations 
@@ -932,6 +971,38 @@ To close chapter 4, the state of multi-sector programming is poor: as we have no
 
 ```{r cc-categoria-TABLE}
 
+cat <- act_ben %>% 
+  filter(categoria != "OTRO") %>% 
+  group_by(pcode3, categoria) %>% 
+  summarise(beneficiarios = sum(beneficiarios), .groups = "drop") %>% 
+  select(pcode3, categoria) %>% 
+  pivot_wider(names_from = categoria, values_from = categoria) 
+
+cat_comb<- t(combn(sort(na.omit(unique(unlist(cat[,-1])))), 2))
+
+cat_freqs <- apply(cat_comb, 1, function(C) {
+  sum(apply(cat[,-1], 1, function(a) all(C %in% a, na.rm = TRUE)))
+})
+
+as.data.frame(cat_comb) %>% 
+  mutate(count = cat_freqs) %>% 
+  left_join(act_ben %>% select(cluster1 = sector, V1 = categoria) %>% distinct(), by = "V1") %>% 
+  left_join(act_ben %>% select(cluster2 = sector, V2 = categoria) %>% distinct(), by = "V2") %>% 
+  mutate(multicluster = ifelse(cluster1 != cluster2, 1, 0),
+         combination = paste0(V1," / ", V2)) %>%
+  filter(multicluster == 1) %>% 
+  select(combination, count) %>%
+  mutate(combination =str_to_title(combination)) %>% 
+  distinct() %>% 
+  arrange(desc(count)) %>% 
+  head(15) %>% 
+  kbl(caption = "Most common inter-cluster activity category combinations") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+  
+  
+```
+
+```{r}
 act_ben %>% 
   select(pcode3, categoria) %>% 
   distinct() %>% 
@@ -944,12 +1015,13 @@ act_ben %>%
             by = c("item2" = "categoria")) %>% 
   filter(sector1 != sector2) %>% 
   mutate_at(vars(item1, item2), ~str_to_title(.)) %>% 
-  select(actvity_category1 = item1, activity_category2 = item2, count = n) %>% 
+  select(actvity_cat1 = item1, activity_cat2 = item2, count = n) %>% 
   head(15) %>% 
   kbl(caption = "Most common inter-cluster activity category combinations") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
   
 ```
+
 <br> 
 
 Of the 15 most common activity category combinations, we see only four combinations which might actually convey multi-sector benefits: 
@@ -1266,7 +1338,7 @@ To summarise some important next steps:
 
 10. Develop and maintain a **consolidated beneficiary register** (at least within UNICEF), so that multi-sector coverage may be accurately tracked and the longitudinal monitoring of target populations facilitated. 
 
-11. Commission a **new coverage and gaps analysis** every 6 months to review progress and identify persistent issues. 
+11. Commission a **new coverage and gaps analysis** every 6 months to review progress and identify persistent issues. It took 21 working days to prepare this report. Time to prepare new reports decreases substantially once templates like this are set up.
 
 <br><br><br><br>
 
